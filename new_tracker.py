@@ -11,7 +11,7 @@ import os
 import csv
 import shutil
 
-def yolo2norfair(bbox, dims=[1440, 1080]):
+def yolo2norfair(bbox, dims=[1440, 1080]) -> Detection:
     """
     Converts a single YOLO bbox to a norfair detection object
 
@@ -23,8 +23,8 @@ def yolo2norfair(bbox, dims=[1440, 1080]):
             [bbox[1] + bbox[3] / 2, bbox[2] + bbox[4] / 2]])
     new_bbox = new_bbox * np.asarray(dims)
     score = np.asarray([bbox[5], bbox[5]])
-    label = bbox[0]
-    return Detection(new_bbox, score, label)
+    label = str(int(bbox[0]))
+    return Detection(new_bbox, score, label=label)
 
 def yolo2norfair_multi(bboxes, dims=[1440,1080]):
     """
@@ -69,40 +69,36 @@ def load_yolo(dir_path):
     return raw_bbox
 
 
-def output_yolo(tracklets, dir_path: str, starting_frame: int, ending_frame: int):
+def output_yolo(results, dir_path: str, starting_frame: int, ending_frame: int):
     # Output result in YOLO format
     print("Printing YOLO output to a subdirectory")
     output_dir = os.path.join(dir_path, "YOLO")
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
 
+    res = iter(results)
+
     # Iterate through every frame
-    for i in range(starting_frame, ending_frame + 1):
+    for i in range(starting_frame, ending_frame):
+
         # zero pad output file name
         fname = os.path.join(output_dir, str(i).zfill(10) + ".txt")
         # Set up csv writer
         with open(fname, 'w') as f:
             writer = csv.writer(f, delimiter=' ')
+            res_by_frame = next(res)
             # Check every tracklet
-            for t in range(len(tracklets)):
-                # Get bbox for frame i from the t^th tracklet
-                bbox = tracklets[t].get_bbox3(i, t)
-                if bbox is None:
-                    continue
-                bbox[1] = max(0, bbox[1])
-                bbox[1] = min(1, bbox[1])
-                bbox[2] = max(0, bbox[2])
-                bbox[2] = min(1, bbox[2])
-                writer.writerow(bbox)
+            for r in res_by_frame:
+                writer.writerow(r)
     # Copies the label file to the output directory if not already present
     if not os.path.exists(os.path.join(dir_path, 'labels.txt')):
-        src_dir = os.path.join(os.path.dirname(__file__), "extras", "labels.txt")
-        shutil.copy2(src=os.path.join(os.path, 'labels.txt',), dst=os.path.join(output_dir, 'labels.txt'))
+        src_path = os.path.join(os.path.dirname(__file__), "extras", "labels.txt")
+        shutil.copy2(src=src_path, dst=os.path.join(output_dir, 'labels.txt'))
     print("Tracked YOLO files stored at " + output_dir)
 
 
 def centroid_dist(det, pred):
-    DIST_LIM = 1080/40
+    DIST_LIM = 1080/20
     detection_centroid = np.sum(det.points, axis=0)/len(det.points)
     tracked_centroid = np.sum(pred.estimate, axis=0)/len(det.points)
     distances = np.linalg.norm(detection_centroid - tracked_centroid, axis=0)
@@ -123,7 +119,7 @@ def reversed_iou(det, pred):
 
 
 
-def do_tracking(input_dir, output_dir):
+def do_tracking(input_dir):
     """
     Runs the tracking program on the input directory, then outputs the result to the output directory
     :param input_dir:
@@ -132,28 +128,49 @@ def do_tracking(input_dir, output_dir):
     """
     # Load raw detection bboxes
     det_bbox = load_yolo(input_dir)
-    tracked_obj = []
+    results_list = []
 
     # Construct a norfair Tracker object
-    tracker = Tracker(
+    tracker:Tracker = Tracker(
         distance_function=reversed_iou,
-        distance_threshold=1,
+        distance_threshold=0.65,
+        detection_threshold= 0.25,
         hit_counter_max=15,
-        initialization_delay=3
+        initialization_delay=0
     )
+
 
     # Iterate through the data, get all the detections by each frame
     i = 0
     for bbox_by_frame in det_bbox:
-        print("Processing frame %d"%i)
+        # List to store all estimate (predicted) bboxes
+        tracked_bbox = []
+        # Obtain all YOLO detection for this frame and convert them to norfair detections
         dets_by_frame = yolo2norfair_multi(bbox_by_frame)
-        tracked_obj.append(tracker.update(dets_by_frame))
+        tracked_objs = tracker.update(dets_by_frame)
+        for tracklet in tracked_objs:
+            if tracklet.hit_counter_is_positive:
+                norfair_bbox = tracklet.estimate / np.array([1440, 1080])
+                YOLO_bbox = np.concatenate([np.sum(norfair_bbox, axis=0) / 2, norfair_bbox[1,:]-norfair_bbox[0,:]], axis=0)
+                YOLO_bbox = np.around(YOLO_bbox, decimals=6)
+                # TODO: Potentially remove this clipping function if we aren't using https://www.makesense.ai for viz
+                YOLO_bbox = np.clip(YOLO_bbox, 0, 1)
+
+                entry = [int(tracklet.label)] + YOLO_bbox.flatten().tolist()
+                tracked_bbox.append(entry)
+        results_list.append(tracked_bbox)
         i += 1
-    return tracked_obj
+        if i == 5:
+            tracker.initialization_delay = 5
+        if i % 100 == 0:
+            print("Processed frame %d"%i)
+    return results_list
 
 
 
 if __name__ == "__main__":
-    res = do_tracking("D:\\UWCR Data\\2019_04_30\\2019_04_30_mlms001\\images_0\\","")
-    print("hi")
+    # path = "D:\\UWCR Data\\2021_03_11\\2021_03_11_onrd017\\images_0\\"
+    path = "D:\\UWCR Data\\2019_04_30\\2019_04_30_mlms001\\images_0\\"
+    res = do_tracking(os.path.join(path))
+    output_yolo(res, path, 0, len(res))
     # get_path_by_file("/Volumes/Untitled/VOC and test data/Image Tests/2021_06_11_lpkf_ococ009/")
