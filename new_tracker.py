@@ -1,5 +1,6 @@
 import numpy as np
 from norfair import Detection, Tracker
+from utilities import iou
 
 # Regex
 import re
@@ -18,12 +19,12 @@ def yolo2norfair(bbox, dims=[1440, 1080]):
     :param dims: Dimensions of the image in px (Optional, Defaults to [1440, 1080])
     :return: Constructed norfair detection object
     """
-    bbox = np.asarray([[bbox[1] - bbox[3] / 2, bbox[2] - bbox[4] / 2],
+    new_bbox = np.asarray([[bbox[1] - bbox[3] / 2, bbox[2] - bbox[4] / 2],
             [bbox[1] + bbox[3] / 2, bbox[2] + bbox[4] / 2]])
-    bbox = bbox * np.asarray(dims)
+    new_bbox = new_bbox * np.asarray(dims)
     score = np.asarray([bbox[5], bbox[5]])
     label = bbox[0]
-    return Detection(bbox, score, label)
+    return Detection(new_bbox, score, label)
 
 def yolo2norfair_multi(bboxes, dims=[1440,1080]):
     """
@@ -35,6 +36,7 @@ def yolo2norfair_multi(bboxes, dims=[1440,1080]):
     """
     norfair_dets = []
     for bbox in bboxes:
+        bbox = np.array(bbox,dtype=float)
         norfair_dets.append(yolo2norfair(bbox, dims))
     return norfair_dets
 
@@ -99,14 +101,26 @@ def output_yolo(tracklets, dir_path: str, starting_frame: int, ending_frame: int
     print("Tracked YOLO files stored at " + output_dir)
 
 
-def dist_func(det, pred):
-    
-
+def centroid_dist(det, pred):
     DIST_LIM = 1080/40
     detection_centroid = np.sum(det.points, axis=0)/len(det.points)
     tracked_centroid = np.sum(pred.estimate, axis=0)/len(det.points)
     distances = np.linalg.norm(detection_centroid - tracked_centroid, axis=0)
     return distances / (DIST_LIM + distances)
+
+
+def reversed_iou(det, pred):
+    """
+    Performs a 'reversed' IOU calculation. The returned value is 1-IOU of the detection and prediction
+    :param det:
+    :param pred:
+    :return:
+    """
+    det = det.points.flatten()
+    pred = pred.estimate.flatten()
+
+    return 1-iou(det, pred)
+
 
 
 def do_tracking(input_dir, output_dir):
@@ -118,24 +132,28 @@ def do_tracking(input_dir, output_dir):
     """
     # Load raw detection bboxes
     det_bbox = load_yolo(input_dir)
+    tracked_obj = []
 
     # Construct a norfair Tracker object
     tracker = Tracker(
-        distance_function=dist_func,
-        distance_threshold=0.8,
+        distance_function=reversed_iou,
+        distance_threshold=1,
         hit_counter_max=15,
-        initialization_delay=5
+        initialization_delay=3
     )
 
     # Iterate through the data, get all the detections by each frame
+    i = 0
     for bbox_by_frame in det_bbox:
+        print("Processing frame %d"%i)
         dets_by_frame = yolo2norfair_multi(bbox_by_frame)
-
+        tracked_obj.append(tracker.update(dets_by_frame))
+        i += 1
+    return tracked_obj
 
 
 
 if __name__ == "__main__":
-    print(os.path.dirname(__file__))
-    # load_yolo("D:\\UWCR Data\\2019_04_30\\2019_04_30_mlms001\\images_0\\")
+    res = do_tracking("D:\\UWCR Data\\2019_04_30\\2019_04_30_mlms001\\images_0\\","")
     print("hi")
     # get_path_by_file("/Volumes/Untitled/VOC and test data/Image Tests/2021_06_11_lpkf_ococ009/")
