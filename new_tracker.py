@@ -24,7 +24,7 @@ def yolo2norfair(bbox, dims=[1440, 1080]) -> Detection:
     new_bbox = new_bbox * np.asarray(dims)
     score = np.asarray([bbox[5], bbox[5]])
     label = str(int(bbox[0]))
-    return Detection(new_bbox, score, label=label)
+    return Detection(new_bbox, score, data=bbox[0], label=label)
 
 def yolo2norfair_multi(bboxes, dims=[1440,1080]):
     """
@@ -114,9 +114,7 @@ def reversed_iou(det, pred):
     """
     det = det.points.flatten()
     pred = pred.estimate.flatten()
-
     return 1-iou(det, pred)
-
 
 
 def do_tracking(input_dir):
@@ -149,7 +147,7 @@ def do_tracking(input_dir):
         dets_by_frame = yolo2norfair_multi(bbox_by_frame)
         tracked_objs = tracker.update(dets_by_frame)
         for tracklet in tracked_objs:
-            if tracklet.hit_counter_is_positive:
+            if tracklet.hit_counter_is_positive and (tracklet.estimate[1, 0] > 0.05 or tracklet.age < 50):
                 norfair_bbox = tracklet.estimate / np.array([1440, 1080])
                 YOLO_bbox = np.concatenate([np.sum(norfair_bbox, axis=0) / 2, norfair_bbox[1,:]-norfair_bbox[0,:]], axis=0)
                 YOLO_bbox = np.around(YOLO_bbox, decimals=6)
@@ -169,7 +167,6 @@ def do_tracking(input_dir):
 
 
 if __name__ == "__main__":
-    # path = "D:\\UWCR Data\\2021_03_11\\2021_03_11_onrd017\\images_0\\"
     path = "D:\\UWCR Data\\2019_04_30\\2019_04_30_mlms001\\images_0\\"
     res = do_tracking(os.path.join(path))
     output_yolo(res, path, 0, len(res))
