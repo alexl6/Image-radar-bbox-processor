@@ -171,7 +171,7 @@ def output_yolo(results, tracklets, dir_path: str, starting_frame: int, ending_f
                 writer.writerow(r[:-1])
     # Copies the label file to the output directory if not already present
     if not os.path.exists(os.path.join(dir_path, 'labels.txt')):
-        src_path = os.path.join(os.path.dirname(__file__), "extras", "labels.txt")
+        src_path = os.path.join(os.path.dirname(__file__), "../extras", "labels.txt")
         shutil.copy2(src=src_path, dst=os.path.join(output_dir, 'labels.txt'))
     # print("Tracked YOLO files stored at " + output_dir)
 
