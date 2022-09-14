@@ -5,7 +5,7 @@ import csv
 
 if __name__ == '__main__':
     # dir_path = "E:\\UWCR Data\\2019_04_30\\2019_04_30_mlms001\\images_0\\Cyclists"
-    dir_path ="E:\\UWCR Data\\2019_05_28\\2019_05_28_cm1s009\\images_0\\Trim"
+    dir_path ="D:\\UWCR Data2\\2019_04_09\\2019_04_09_pms3000\\images_0\\Trim"
 
     files = glob.glob("*.txt", root_dir=dir_path)
     for fname in files:
