@@ -42,7 +42,7 @@ def yolo2norfair(bbox, dims=[1440, 1080]) -> Detection:
     :param dims: Dimensions of the image in px (Optional, Defaults to [1440, 1080])
     :return: Constructed norfair detection object
     """
-    new_bbox = bbox[1:5].reshape((2,2)) * np.asarray(dims)
+    new_bbox = bbox[1:5].reshape((2, 2)) * np.asarray(dims)
     score = np.asarray([bbox[5], bbox[5]])
     # label = str(int(bbox[0]))
     return Detection(new_bbox, score, data=int(bbox[0]), label=label_conv(int(bbox[0])))
@@ -76,7 +76,7 @@ def yolo2norfair_multi(bboxes, dims=[1440, 1080]):
     bboxes = filter_cyclists(bboxes)
 
     for bbox in bboxes:
-        if (bbox[3]-bbox[1])/(bbox[4]-bbox[2]) <= 6:    # Eliminate ultra-wide boxes
+        if (bbox[3] - bbox[1]) / (bbox[4] - bbox[2]) <= 6:  # Eliminate ultra-wide boxes
             norfair_dets.append(yolo2norfair(bbox, dims))
     return norfair_dets
 
@@ -84,8 +84,8 @@ def yolo2norfair_multi(bboxes, dims=[1440, 1080]):
 def remove_duplitcates(bboxes):
     keep_idx = np.ones(bboxes.shape[0])
     for i in range(bboxes.shape[0]):
-        for j in range(i+1,bboxes.shape[0]):
-            if iou2(bboxes[i,:],bboxes[j,:]) > 0.8:
+        for j in range(i + 1, bboxes.shape[0]):
+            if iou2(bboxes[i, :], bboxes[j, :]) > 0.8:
                 keep_idx[i if bboxes[i, 5] > bboxes[j, 5] else j] = 0
     return bboxes[keep_idx.astype(bool), :]
 
@@ -121,11 +121,12 @@ def load_yolo(dir_path):
 def filter_tracklets(tracklets):
     """
     Filters a given list of tracklets & finalizes their object type
+
     :param tracklets: List of tracklets to be processed
     :return: Processed tracklets
     """
     new_tracklets = {}
-    for k,v in tracklets.items():
+    for k, v in tracklets.items():
         if not v.background:
             v.finalize_obj_type()
             v.obj_type.clear()  # frees the memory associated with the map
@@ -134,15 +135,17 @@ def filter_tracklets(tracklets):
     return new_tracklets
 
 
-
-def output_yolo(results, tracklets, dir_path: str, starting_frame: int, ending_frame: int) -> None:
+def output_yolo(results, tracklets, dir_path: str, starting_frame: int, ending_frame: int,
+                print_uid: bool = True) -> None:
     """
     Outputs results into a subdirectory in YOLO format
+
     :param results: Detection results from do_tracking()
     :param tracklets: Auxiliary tracklet from do_tracking() that have been filtered whose object type has been finalized
     :param dir_path: Path to a location where a subdirectory named "YOLO" will be created
     :param starting_frame: Starting frame number, used to name the files
     :param ending_frame: Ending frame number used to name the files
+    :param print_uid: Prints the uid for each tracklet if True, otherwise ht uid will not be printed (For compatibility with MakeSense.ai)
     """
     # Output result in YOLO format
     output_dir = os.path.join(dir_path, "YOLO")
@@ -168,7 +171,10 @@ def output_yolo(results, tracklets, dir_path: str, starting_frame: int, ending_f
 
                 # Update object type
                 r[0] = tracklets[r[-1]].final_type
-                writer.writerow(r[:-1])
+                if print_uid:
+                    writer.writerow(r)
+                else:
+                    writer.writerow(r[:-1])
     # Copies the label file to the output directory if not already present
     if not os.path.exists(os.path.join(dir_path, 'labels.txt')):
         src_path = os.path.join(os.path.dirname(__file__), "../extras", "labels.txt")
@@ -184,9 +190,9 @@ def centroid_dist(det, pred) -> float:
     :param pred: Prediction object (estimate)
     :return: Centroid distance (possibly normalized)
     """
-    DIST_LIM = 1080/20
-    detection_centroid = np.sum(det.points, axis=0)/len(det.points)
-    tracked_centroid = np.sum(pred.estimate, axis=0)/len(det.points)
+    DIST_LIM = 1080 / 20
+    detection_centroid = np.sum(det.points, axis=0) / len(det.points)
+    tracked_centroid = np.sum(pred.estimate, axis=0) / len(det.points)
     distances = np.linalg.norm(detection_centroid - tracked_centroid, axis=0)
     return distances / (DIST_LIM + distances)
 
@@ -201,10 +207,10 @@ def reversed_iou(det, pred) -> float:
     """
     det = det.points.flatten()
     pred = pred.estimate.flatten()
-    return 1-iou(det, pred)
+    return 1 - iou(det, pred)
 
 
-def norfair2yolo(bbox, dims = [1440,1080], do_clip = True):
+def norfair2yolo(bbox, dims=[1440, 1080], do_clip=True):
     """
     Converts a norfair bbox into a YOLO bbox for an image of size dims.
 
@@ -220,6 +226,7 @@ def norfair2yolo(bbox, dims = [1440,1080], do_clip = True):
     if do_clip:
         return np.clip(YOLO_bbox, 0, 1)
     return YOLO_bbox
+
 
 def add_bbox_res(norfair_bbox, label, id):
     """
@@ -248,10 +255,10 @@ def do_tracking(input_dir):
     results_list = []
 
     # Construct a norfair Tracker object
-    tracker:Tracker = Tracker(
+    tracker: Tracker = Tracker(
         distance_function=reversed_iou,
         distance_threshold=0.65,
-        detection_threshold= 0.4,
+        detection_threshold=0.4,
         hit_counter_max=12,
         # initialization_delay=0,
         initialization_delay=5,
@@ -260,7 +267,7 @@ def do_tracking(input_dir):
 
     # Auxiliary tracklet object to keep track of additional info
     tracklets = {}
-    init_tracklets ={}
+    init_tracklets = {}
 
     # Iterate through the data, get all the detections by each frame
     i = 0
@@ -280,9 +287,9 @@ def do_tracking(input_dir):
                     tracklets[tracked_obj.id] = init_tracklets.pop(tracked_obj.initializing_id)
                     tracklets[tracked_obj.id].update_id(tracked_obj.id)
                     # Copy estimates made during initialization to results_list
-                    past_det_idx = len(results_list) - len(tracklets[tracked_obj.id].estimates)-1
+                    past_det_idx = len(results_list) - len(tracklets[tracked_obj.id].estimates) - 1
                     for j in range(len(tracklets[tracked_obj.id].estimates)):
-                        results_list[past_det_idx+j].append(tracklets[tracked_obj.id].estimates[j])
+                        results_list[past_det_idx + j].append(tracklets[tracked_obj.id].estimates[j])
                     # Remove estimates stored in tracklet obj
                     tracklets[tracked_obj.id].clear_estimates()
 
@@ -306,7 +313,8 @@ def do_tracking(input_dir):
                 if obj.initializing_id not in init_tracklets.keys():
                     init_tracklets[obj.initializing_id] = tracklet(obj.initializing_id)
                 init_tracklets[obj.initializing_id].update(obj.last_detection.data, norfair2yolo(obj.estimate))
-                init_tracklets[obj.initializing_id].add_estimate(add_bbox_res(obj.estimate, obj.label, obj.initializing_id))
+                init_tracklets[obj.initializing_id].add_estimate(
+                    add_bbox_res(obj.estimate, obj.label, obj.initializing_id))
 
         results_list.append(tracked_bbox)
         i += 1
@@ -327,6 +335,7 @@ def runner(path: str):
     res, tracklets_res = do_tracking(os.path.join(path))
     tracklets_res = filter_tracklets(tracklets_res)
     output_yolo(res, tracklets_res, path, 0, len(res))
+
 
 if __name__ == "__main__":
     path = "D:\\UWCR Data2\\2019_05_29\\2019_05_29_bm1s017\\images_0"

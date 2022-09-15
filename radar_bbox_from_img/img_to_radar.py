@@ -62,9 +62,10 @@ def load_yolo(dir_path):
             raw_bbox.append(np.asarray(entry, dtype=float))
 
     # Scale bboxes to 1440x1080
-    for frame_data in img_bboxes:
+    scale = np.array([1, 1440, 1080, 1440, 1080, 1])
+    for frame_data in raw_bbox:
         if len(frame_data) > 0:
-            frame_data *= np.array([1, 1440, 1080, 1440, 1080])
+            frame_data *= scale
 
     return raw_bbox
 
@@ -136,9 +137,9 @@ def polar_in_cartesian(range_grid, angle_grid, dim=(128, 128)):
     return x_posn.flatten(), y_posn.flatten()
 
 
-def img_to_radar_cartesian(img_bboxes: List[NDArray], H: NDArray) -> NDArray:
+def img_to_radar_cartesian(img_bboxes: NDArray, H: NDArray) -> NDArray:
     """
-    Converts the centroids of a list of image bboxes to their location on radar (in cartesian coordinate)
+    Converts the centroids of image bboxes to their location on radar (in cartesian coordinate)
 
     :param img_bboxes: Image bounding boxes to process
     :param H: Conversion matrix
@@ -146,7 +147,6 @@ def img_to_radar_cartesian(img_bboxes: List[NDArray], H: NDArray) -> NDArray:
     """
 
     # Extract the images centroids to be a new [3 x n] numpy array
-    print(img_bboxes)
     if len(img_bboxes) == 0:
         return np.asarray(img_bboxes)
     img_coordinates = img_bboxes[:, 1:4].copy()
@@ -185,7 +185,6 @@ if __name__ == '__main__':
 
     img_bboxes = load_yolo(os.path.join(seq_path, "images_0", "YOLO"))
 
-
     trans_mat: NDArray = load_transform_mat("transform.mat")
 
     range_grid, angle_grid = calc_conversion_grid()
@@ -208,7 +207,9 @@ if __name__ == '__main__':
 
         plt.scatter(x, y, c=z)
         for i in range(radar_posn.shape[0]):
+            # Obtain the bbox dimensions in horizontal directory based on the object label
             radar_bbox_dim: List[float] = label_conv(radar_posn[i, 0])
+
             if radar_posn[i, 0] != 0 and dim_ratio(img_bboxes[f_num][i, :]) < 1.8:
                 temp: float = radar_bbox_dim[0]
                 radar_bbox_dim[0] = radar_bbox_dim[1]

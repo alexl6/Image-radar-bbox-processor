@@ -100,7 +100,7 @@ def filter_cyclists(detections: NDArray):
             del persons_dets[match_idx]
             continue
 
-        # If there isn't a the current bicycle detection only
+        # If there isn't a match, add the current bicycle detection only
         out_dets.append(bicycle_dets[i])
 
     return np.asarray(out_dets + persons_dets)
