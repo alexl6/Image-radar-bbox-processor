@@ -158,8 +158,11 @@ def img_to_radar_cartesian(img_bboxes: NDArray, H: NDArray) -> NDArray:
     radar_centroids = transform(H, img_coordinates)
 
     # TODO: Assign bbox size manually for each radar centroids
-    return np.concatenate((img_bboxes[:, 0:1], radar_centroids[:, 0:2]), axis=1)
-
+    ret_val: NDArray = np.concatenate((img_bboxes[:, 0:1], radar_centroids[:, 0:2]), axis=1)
+    return ret_val
+    # if len(ret_val.shape) == 2:
+    #     return ret_val
+    # return ret_val.reshape((1, len(ret_val)))
 
 def dim_ratio(bbox: NDArray) -> float:
     """
