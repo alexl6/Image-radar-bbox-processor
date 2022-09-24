@@ -1,11 +1,13 @@
 import os, re
-
-import numpy
 import numpy as np
-import matplotlib.pyplot as plt
-from numpy.typing import NDArray
 
-from img_to_radar import load_yolo, load_transform_mat, calc_conversion_grid, polar_in_cartesian, img_to_radar_cartesian
+from radar_utilities import load_yolo, load_transform_mat, polar_in_cartesian, img_to_radar_cartesian
+from convert import calc_conversion_grid
+
+from numpy.typing import NDArray
+from typing import List
+
+
 
 V_FRAME_DIFF_MAX: int = 20
 V_FRAME_DIFF_MIN: int = 5
@@ -33,6 +35,63 @@ def generate_idx_range(lower:int, upper:int, length:int):
     return range(upper, lower, -1)
 
 
+def get_centroids(img_bboxes: List[NDArray], trans_mat:NDArray)->List[NDArray]:
+    centroids:List[NDArray] = []
+    for frame in img_bboxes:
+        if len(frame) == 0:
+            centroids.append(np.asarray([[]]))
+            continue
+        # Calculate the centroid's location
+        radar_posn = img_to_radar_cartesian(frame, trans_mat)
+        # Reshape frame in to 2D array if needed
+        # if len(frame.shape) == 1:
+        #     frame.reshape((1, frame.shape[0]))
+        assert(len(frame.shape) == 2)
+        assert(len(radar_posn.shape) == 2)
+        # TODO: change radar_posn to be a map from UID to centroids for better perf
+        centroids.append(np.concatenate((radar_posn, frame[:, [-1]]), axis=1))
+
+    return centroids
+
+
+def get_velocities(centroids)-> List[NDArray]:
+    centroids_velocity:List[NDArray] = []
+    # A map that holds the last calculated velocity for each
+    last_v_by_uid = {}
+
+    # Iterate through every frame
+    for i in range(0, len(centroids)):
+        if centroids[i].shape[1] == 0:
+            centroids_velocity.append(np.asarray([[]]))
+            continue
+
+        # Generate numpy array for storing the velocity output, defaults velocity to be zero
+        velocities = np.zeros((centroids[i].shape[0], 3))
+        # Copy uid for all bboxes in the frame
+        velocities[:, 2] = centroids[i][:, 3]
+        # Go through every radar centroid for the ith frame
+        for r in range(centroids[i].shape[0]):
+            # Attempt to find a bbox with the same uid in the next few frames
+            indices = generate_idx_range(i + V_FRAME_DIFF_MIN, i + V_FRAME_DIFF_MAX, len(centroids))
+            idx = -1
+            for f in indices:
+                # Try to find a bbox in the fth frame that has the same uid
+                idx = find_uid_idx(centroids[i][r, 3], centroids[f])
+                if idx != -1:
+                    # Use the found bbox to calculate velocity
+                    calc_velocity(centroids[i], r, centroids[f], idx, velocities, f - i)
+                    last_v_by_uid[centroids[i][r,3]] = velocities[r]
+                    break
+
+            if idx == -1:
+                val = last_v_by_uid[centroids[i][r,3]]
+                velocities[r, :] = val
+
+
+        centroids_velocity.append(velocities)
+
+    return centroids_velocity
+
 
 if __name__ == '__main__':
     src_path = "D:\\UWCR Data\\"
@@ -57,43 +116,9 @@ if __name__ == '__main__':
     # Pre-convert every polar coordinate in radar data into its cartesian counterpart
     x, y = polar_in_cartesian(range_grid, angle_grid)
 
-    centroids = []
-    for frame in img_bboxes:
-        if len(frame) == 0:
-            centroids.append(numpy.asarray([[]]))
-            continue
-        # Calculate the centroid's location
-        radar_posn = img_to_radar_cartesian(frame, trans_mat)
-        # Reshape frame in to 2D array if needed
-        # if len(frame.shape) == 1:
-        #     frame.reshape((1, frame.shape[0]))
-        assert(len(frame.shape) == 2)
-        assert(len(radar_posn.shape) == 2)
-        # TODO: change radar_posn to be a map from UID to centroids for better perf
-        centroids.append(np.concatenate((radar_posn, frame[:, [-1]]), axis=1))
-
-    centroids_velocity = []
-    # Iterate through every frame
-    for i in range(0, len(centroids)):
-        if centroids[i].shape[1] == 0:
-            centroids_velocity.append(np.asarray([[]]))
-            continue
-
-        # Generate numpy array for storing the velocity output, defaults velocity to be zero
-        velocities = np.zeros((centroids[i].shape[0], 3))
-        # Copy uid for all bboxes in the frame
-        velocities[:, 2] = centroids[i][:, 3]
-        # Go through every radar centroid for the ith frame
-        for r in range(centroids[i].shape[0]):
-            # Attempt to find a bbox with
-            indices = generate_idx_range(i+V_FRAME_DIFF_MIN, i+V_FRAME_DIFF_MAX, len(centroids))
-            for f in indices:
-                # Try to find a bbox in the fth frame that has the same uid
-                idx = find_uid_idx(centroids[i][r, 3], centroids[f])
-                if idx != -1:
-                    # Use the found bbox to calculate velocity
-                    calc_velocity(centroids[i], r, centroids[f], idx, velocities, f-i)
-        centroids_velocity.append(velocities)
+    # Calculate object velocity based the displacement of their bounding box centroids
+    centroids = get_centroids(img_bboxes, trans_mat)
+    centroids_velocity = get_velocities(centroids)
 
     exit()
 

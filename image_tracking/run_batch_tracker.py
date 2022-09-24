@@ -4,8 +4,8 @@ import os
 import re
 
 if __name__ == "__main__":
-    seq_file = "D:\\sequences.txt"
-    base_dir = "D:\\UWCR Data"
+    seq_file = "D:\\sequences2+3.txt"
+    base_dir = "D:\\UWCR Data2"
 
     date_pattern = re.compile("\d{4}_\d{2}_\d{2}")
     seqs = []

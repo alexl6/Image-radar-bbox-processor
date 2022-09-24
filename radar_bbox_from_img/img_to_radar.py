@@ -1,16 +1,17 @@
 import re
-import glob
 import os
-import csv
-import scipy
-from scipy import io
+
 import numpy as np
-from typing import List, Tuple
-from numpy.typing import NDArray
-from convert import calc_conversion_grid
-# import PIL.Image
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+
+from convert import calc_conversion_grid
+from radar_utilities import load_yolo, load_transform_mat, polar_in_cartesian, img_to_radar_cartesian
+from radar_velocity import get_centroids, get_velocities
+
+from typing import List
+from numpy.typing import NDArray
+
 
 MAX_RADAR_RADIUS = 30
 
@@ -22,81 +23,14 @@ def label_conv(label: int) -> List[float]:
     :return: The estimated dimensions in (length, width). Both represented as floats
     """
     mapping = {0: [0.7, 0.7],
-               1: [1.7, 0.6],
-               2: [4.5, 1.8],
-               3: [2, 0.8],
-               5: [12, 2.5],
-               7: [15, 2.6],
-               80: [1.7, 0.6]
+               1: [0.6, 1.7],
+               2: [1.8, 4.5],
+               3: [0.8, 2],
+               5: [2.5, 12],
+               7: [2.6, 15],
+               80: [0.6, 1.7]
                }
     return mapping[label]
-
-
-def load_yolo(dir_path):
-    """
-    Load all yolo formatted detections from a given directory where every detection is in file named '[frame_num].txt'
-    Scales dimensions to 1440x1080. Expected file is space separated where each row represents a detection formatted as:
-    Object_class, center_X, center_Y, width, height, confidence
-
-
-    :param dir_path: Directory to look for the detections
-    :return: A list of lists of YOLO detections. Each inner list contains all detections for a given frame.
-                Every detection is formatted [Object_class, center_X, center_Y, width, height, confidence, frame_num]
-    """
-    raw_bbox = []
-    fname_pattern = re.compile("[0-9]+.txt$")
-    # Get a list of plain text files in the given dir
-    files = glob.glob("*.txt", root_dir=dir_path)
-    # Load detections from each file
-    for fname in files:
-        if fname_pattern.match(fname) is None:  # skip non-YOLO files
-            continue
-        # Read & process each line
-        with open(os.path.join(dir_path, fname), 'r') as f:
-            entry = []
-            reader = csv.reader(f, delimiter=' ')
-            for line in reader:
-                if len(line) == 0:
-                    continue
-                entry.append(line)
-            raw_bbox.append(np.asarray(entry, dtype=float))
-
-    # Scale bboxes to 1440x1080
-    scale = np.array([1, 1440, 1080, 1440, 1080, 1])
-    for frame_data in raw_bbox:
-        if len(frame_data) > 0:
-            frame_data *= scale
-
-    return raw_bbox
-
-
-# Ported from original code in MATLAB
-def transform(H: NDArray, coordinates: NDArray) -> NDArray:
-    """
-    Transforms multiple sets of coordinates from the image plane into cartesian radar plane using matrix H
-
-    :param H: Transformation matrix used to transform each set of coordinate
-    :param coordinates: A numpy array of coordinates in YOLO format where each row is a single 2D point
-    :return:
-    """
-    calculated_points = np.empty([coordinates.shape[0], 3])
-    for j in range(coordinates.shape[0]):
-        temp: NDArray = H @ coordinates[j:j + 1, :].conjugate().T
-        temp = np.divide(temp, temp[2, :])
-        calculated_points[j, :] = temp.T[0]
-
-    return calculated_points
-
-
-def load_transform_mat(path: str, var_name: str = 'HRadar0') -> NDArray:
-    """
-    Loads a transformation matrix from a MATLAB .mat file
-
-    :param path: Path to the .mat file
-    :param var_name: The variable name of the matrix
-    :return: A numpy array representation of the transformation matrix
-    """
-    return scipy.io.loadmat(path)[var_name]
 
 
 def get_radar_bg_intensity(f_num, seq_path):
@@ -116,53 +50,10 @@ def get_radar_bg_intensity(f_num, seq_path):
 
     return b.flatten()
 
-
-def polar_in_cartesian(range_grid, angle_grid, dim=(128, 128)):
-    """
-    Calculates the cartesian position of every point in a polar grid of dim(ension). Default dimension is (128 x 128)
-
-    :param dim: Dimensions of the grid
-    :return:
-    """
-    x_posn = np.empty(dim)
-    y_posn = np.empty(dim)
-
-    for i in range(dim[0]):
-        for j in range(dim[1]):
-            angle = angle_grid[j]
-            rang = range_grid[i]
-            x_posn[i, j] = np.sin(angle) * rang
-            y_posn[i, j] = np.cos(angle) * rang
-
-    return x_posn.flatten(), y_posn.flatten()
-
-
-def img_to_radar_cartesian(img_bboxes: NDArray, H: NDArray) -> NDArray:
-    """
-    Converts the centroids of image bboxes to their location on radar (in cartesian coordinate)
-
-    :param img_bboxes: Image bounding boxes to process
-    :param H: Conversion matrix
-    :return: Centroids' location in cartesian radar plane
-    """
-
-    # Extract the images centroids to be a new [3 x n] numpy array
-    if len(img_bboxes) == 0:
-        return np.asarray(img_bboxes)
-    img_coordinates = img_bboxes[:, 1:4].copy()
-    # Calculate the centroid
-    img_coordinates[:, 1] += img_bboxes[:, 4] / 2
-    img_coordinates[:, 2] = 1
-
-    # Convert the coordinates to cartesian radar coordinates
-    radar_centroids = transform(H, img_coordinates)
-
-    # TODO: Assign bbox size manually for each radar centroids
-    ret_val: NDArray = np.concatenate((img_bboxes[:, 0:1], radar_centroids[:, 0:2]), axis=1)
-    return ret_val
-    # if len(ret_val.shape) == 2:
-    #     return ret_val
-    # return ret_val.reshape((1, len(ret_val)))
+def swap(container: List[float], idx0:int = 0, idx1:int = 1):
+    temp: float = container[idx0]
+    container[idx0] = container[idx1]
+    container[idx1] = temp
 
 def dim_ratio(bbox: NDArray) -> float:
     """
@@ -175,8 +66,11 @@ def dim_ratio(bbox: NDArray) -> float:
 
 
 if __name__ == '__main__':
-    src_path = "D:\\UWCR Data\\"
-    seq_name = "2019_04_30_mlms001"
+    src_path = "D:\\UWCR Data2\\"
+    seq_name = input("Seq name?\t")
+
+    if seq_name == '':
+        seq_name = "2019_04_09_pms1000"
 
     date_pattern = re.compile("\d{4}_\d{2}_\d{2}")
     date = date_pattern.search(seq_name).group()
@@ -186,13 +80,69 @@ if __name__ == '__main__':
         print("Path does not exist...")
         exit(1)
 
+    print("Loading img bboxes")
     img_bboxes = load_yolo(os.path.join(seq_path, "images_0", "YOLO"))
 
     trans_mat: NDArray = load_transform_mat("transform.mat")
 
     range_grid, angle_grid = calc_conversion_grid()
     x, y = polar_in_cartesian(range_grid, angle_grid)
+    print("Calculated radar positions & velocities")
+    # Calculate radar bbox centroids and their velocities
+    centroids = get_centroids(img_bboxes, trans_mat)
+    centroids_v = get_velocities(centroids)
 
+
+    radar_label_path = os.path.join(seq_path, 'radar_label')
+    if not os.path.exists(radar_label_path):
+        os.mkdir(radar_label_path)
+
+    for f_num in range(len(img_bboxes)):
+
+        if f_num % (len(img_bboxes) // 4) == 0:
+            print("%i%% Done"% (100 * (f_num / len(img_bboxes))))
+        z = get_radar_bg_intensity(f_num, seq_path)
+        # Clear previous drawings
+        plt.clf()
+        # Draw radar background
+        plt.scatter(x, y, c=z)
+        # Draw every box in this frame
+        for i in range(img_bboxes[f_num].shape[0]):
+            # Skip bboxes outside of radar range
+            if centroids[f_num][i, 2] > MAX_RADAR_RADIUS:
+                continue
+
+            # Get the bounding box dimensions from object type label
+            # Assume object is 'vertical' by default
+            radar_bbox_dim: List[float] = label_conv(img_bboxes[f_num][i, 0])
+
+            # first check the velocity, prefer determining orientation by velocity
+            if np.sum(np.abs(centroids_v[f_num][i, 0:2] ** 2)) > 0.08:
+                # If there's greater horizontal movement
+                if abs(centroids_v[f_num][i, 0]) / abs(centroids_v[f_num][i, 0]) > 1.1:
+                    swap(radar_bbox_dim)
+            # Check box shape if the object is reasonably far away
+            elif centroids[f_num][i, 2] > 8 or (abs(centroids[f_num][i, 1]) < 1 and centroids[f_num][i, 2] > 5):
+                # Use the bounding box aspect ratio to determine object orientation
+                if dim_ratio(img_bboxes[f_num][i, :]) > 2:
+                    swap(radar_bbox_dim)
+
+            plt.gca().add_patch(patches.Rectangle(
+                (centroids[f_num][i, 1] - radar_bbox_dim[0] / 2, centroids[f_num][i, 2] - radar_bbox_dim[1] / 2),
+                radar_bbox_dim[0], radar_bbox_dim[1], fill=True, color='pink', alpha=0.35,
+                zorder=100))
+        # Use the same scaling for x,y-axis, configure bounds, display
+        plt.axis('square')
+        plt.xlim((-MAX_RADAR_RADIUS, MAX_RADAR_RADIUS))
+        plt.ylim((0, MAX_RADAR_RADIUS))
+        # plt.scatter(radar_posn[:,1], radar_posn[:, 2], c='red', alpha = 0.8)
+
+        fig_name = str(f_num).zfill(10) + '.png'
+        plt.savefig(os.path.join(radar_label_path, fig_name))
+
+    exit()
+
+    # Enable interactive mode
     plt.ion()
     while True:
         # Take user input/exit gracefully
@@ -201,30 +151,42 @@ if __name__ == '__main__':
         except EOFError:
             print("Exiting...")
             exit()
+
+        # Retry if frame number out of range
+        if f_num < 0 or f_num >= len(img_bboxes):
+            continue
+        # Get radar background
+        z = get_radar_bg_intensity(f_num, seq_path)
+
         # Clear previous drawings
         plt.clf()
-        radar_posn = img_to_radar_cartesian(img_bboxes[f_num], trans_mat)
-
-        z = get_radar_bg_intensity(f_num, seq_path)
-        print(radar_posn)
-
+        # Draw radar background
         plt.scatter(x, y, c=z)
-        for i in range(radar_posn.shape[0]):
-            # Obtain the bbox dimensions in horizontal directory based on the object label
-            radar_bbox_dim: List[float] = label_conv(radar_posn[i, 0])
-
-            if radar_posn[i, 0] != 0 and dim_ratio(img_bboxes[f_num][i, :]) < 1.8:
-                temp: float = radar_bbox_dim[0]
-                radar_bbox_dim[0] = radar_bbox_dim[1]
-                radar_bbox_dim[1] = temp
-            if radar_posn[i, 2] > MAX_RADAR_RADIUS:
+        # Draw every box in this frame
+        for i in range(img_bboxes[f_num].shape[0]):
+            # Skip bboxes outside of radar range
+            if centroids[f_num][i, 2] > MAX_RADAR_RADIUS:
                 continue
-            # fig.patches.extend([plt.Rectangle((0.25, 0.5), 0.25, 0.25, color='g', alpha=0.5, zorder=1000, transform=fig.transFigure, figure=fig)])
-            plt.gca().add_patch(
-                patches.Rectangle((radar_posn[i, 1] - radar_bbox_dim[0] / 2, radar_posn[i, 2] - radar_bbox_dim[1] / 2),
-                                  radar_bbox_dim[0], radar_bbox_dim[1], fill=True, color='pink', alpha=0.35,
-                                  zorder=100))
 
+            # Get the bounding box dimensions from object type label
+            # Assume object is 'vertical' by default
+            radar_bbox_dim: List[float] = label_conv(img_bboxes[f_num][i, 0])
+
+            # first check the velocity, prefer determining orientation by velocity
+            if np.sum(np.abs(centroids_v[f_num][i, 0:2] ** 2)) > 0.08:
+                # If there's greater horizontal movement
+                if abs(centroids_v[f_num][i, 0])/abs(centroids_v[f_num][i, 0]) > 1.1:
+                    swap(radar_bbox_dim)
+            # Check box shape if the object is reasonably far away
+            elif centroids[f_num][i,2] > 8 or (abs(centroids[f_num][i,1]) < 1 and centroids[f_num][i,2] >5):
+                # Use the bounding box aspect ratio to determine object orientation
+                if dim_ratio(img_bboxes[f_num][i, :]) > 2:
+                    swap(radar_bbox_dim)
+
+            plt.gca().add_patch(patches.Rectangle((centroids[f_num][i, 1] - radar_bbox_dim[0] / 2, centroids[f_num][i, 2] - radar_bbox_dim[1] / 2),
+                              radar_bbox_dim[0], radar_bbox_dim[1], fill=True, color='pink', alpha=0.35,
+                              zorder=100))
+        # Use the same scaling for x,y-axis, configure bounds, display
         plt.axis('square')
         plt.xlim((-MAX_RADAR_RADIUS, MAX_RADAR_RADIUS))
         plt.ylim((0, MAX_RADAR_RADIUS))

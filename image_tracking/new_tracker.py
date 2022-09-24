@@ -31,7 +31,7 @@ def label_conv(label) -> str:
     try:
         return mapping[label]
     except KeyError:
-        return 4
+        return '4'
 
 
 def yolo2norfair(bbox, dims=[1440, 1080]) -> Detection:
@@ -72,14 +72,30 @@ def yolo2norfair_multi(bboxes, dims=[1440, 1080]):
     bboxes[:, 5] /= 100
 
     # TODO: Get rid of duplicates
+    l1 = bboxes.shape[0]
+    bboxes = filter_by_dim(bboxes)
+    if l1 > bboxes.shape[0]:
+        print("filtered")
+        print("%i > %i"%(l1, bboxes.shape[0]))
     bboxes = remove_duplitcates(bboxes)
     bboxes = filter_cyclists(bboxes)
 
     for bbox in bboxes:
-        if (bbox[3] - bbox[1]) / (bbox[4] - bbox[2]) <= 6:  # Eliminate ultra-wide boxes
+        if (bbox[3] - bbox[1]) / (bbox[4] - bbox[2]) <= 5:  # Eliminate ultra-wide boxes
             norfair_dets.append(yolo2norfair(bbox, dims))
+        else:
+            print("wide")
     return norfair_dets
 
+
+def filter_by_dim(bboxes):
+    keep_idx = np.ones(bboxes.shape[0])
+    for i in range(bboxes.shape[0]):
+        ratio = (bboxes[i, 3] - bboxes[i, 1]) / (bboxes[i, 4] - bboxes[i, 2])
+        if ratio > 6 or (bboxes[i, 0] == 2 and (ratio > 4 or ratio < 0.7)):
+            # print(ratio)
+            keep_idx[i] = 0
+    return bboxes[keep_idx.astype(bool), :]
 
 def remove_duplitcates(bboxes):
     keep_idx = np.ones(bboxes.shape[0])
@@ -338,6 +354,6 @@ def runner(path: str):
 
 
 if __name__ == "__main__":
-    path = "D:\\UWCR Data2\\2019_05_29\\2019_05_29_bm1s017\\images_0"
+    path = "D:\\UWCR Data2\\2019_04_09\\2019_04_09_pms1000\\images_0"
     runner(path)
     print("Done")
