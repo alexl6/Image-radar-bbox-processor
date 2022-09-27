@@ -118,3 +118,19 @@ def img_to_radar_cartesian(img_bboxes: NDArray, H: NDArray) -> NDArray:
     # if len(ret_val.shape) == 2:
     #     return ret_val
     # return ret_val.reshape((1, len(ret_val)))
+
+
+def swap(container: List[float], idx0: int = 0, idx1: int = 1):
+    temp: float = container[idx0]
+    container[idx0] = container[idx1]
+    container[idx1] = temp
+
+
+def dim_ratio(bbox: NDArray) -> float:
+    """
+    Calculate the ratio between width and height of a bounding box. (w/h)
+
+    :param bbox: Norfair bbox
+    :return: Ratio in terms of w/h
+    """
+    return bbox[3] / bbox[4]

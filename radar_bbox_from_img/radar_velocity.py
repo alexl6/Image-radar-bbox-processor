@@ -80,12 +80,15 @@ def get_velocities(centroids)-> List[NDArray]:
                 if idx != -1:
                     # Use the found bbox to calculate velocity
                     calc_velocity(centroids[i], r, centroids[f], idx, velocities, f - i)
-                    last_v_by_uid[centroids[i][r,3]] = velocities[r]
+                    last_v_by_uid[centroids[i][r, 3]] = velocities[r]
                     break
 
             if idx == -1:
-                val = last_v_by_uid[centroids[i][r,3]]
-                velocities[r, :] = val
+                try:
+                    val = last_v_by_uid[centroids[i][r,3]]
+                    velocities[r, :] = val
+                except KeyError:
+                    pass
 
 
         centroids_velocity.append(velocities)
@@ -94,7 +97,7 @@ def get_velocities(centroids)-> List[NDArray]:
 
 
 if __name__ == '__main__':
-    src_path = "D:\\UWCR Data\\"
+    src_path = "D:\\UWCR Data2\\"
     seq_name = "2019_04_30_mlms001"
 
     date_pattern = re.compile("\d{4}_\d{2}_\d{2}")
