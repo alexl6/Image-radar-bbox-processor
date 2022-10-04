@@ -4,20 +4,23 @@ import numpy as np
 import scipy.io
 
 from numpy.typing import NDArray
-from typing import List
+from typing import List, Dict
 
-def load_yolo(dir_path: str)-> List[NDArray]:
+
+def load_yolo(dir_path: str, scale:NDArray = np.array([1, 1440, 1080, 1440, 1080, 1]))-> (List[NDArray], List[Dict]):
     """
     Load all yolo formatted detections from a given directory where every detection is in file named '[frame_num].txt'
     Scales dimensions to 1440x1080. Expected file is space separated where each row represents a detection formatted as:
-    Object_class, center_X, center_Y, width, height, confidence
-
+    Object_class, center_X, center_Y, width, height, UID
 
     :param dir_path: Directory to look for the detections
-    :return: A list of lists of YOLO detections. Each inner list contains all detections for a given frame.
-                Every detection is formatted [Object_class, center_X, center_Y, width, height, confidence, frame_num]
+    :return: A list of 2D numpy arrays of YOLO detections. Each 2D array represents the detections in that given frame.
+                Every row is a bounding box formatted as [Object_class, center_X, center_Y, width, height]
+             Also returns a list of dictionaries (same length as the YOLO detections list). Each dict maps the UID of
+                a detection to its row index in the 2D array for that given frame.
     """
-    raw_bbox = []
+    det_bbox = []
+    uid_map = []
     fname_pattern = re.compile("[0-9]+.txt$")
     # Get a list of plain text files in the given dir
     files = glob.glob("*.txt", root_dir=dir_path)
@@ -28,20 +31,24 @@ def load_yolo(dir_path: str)-> List[NDArray]:
         # Read & process each line
         with open(os.path.join(dir_path, fname), 'r') as f:
             entry = []
+            mapping = {}
             reader = csv.reader(f, delimiter=' ')
+            idx = 0 # Can't use enumerate here because it has problem with reading extra empty lines
             for line in reader:
                 if len(line) == 0:
                     continue
                 entry.append(line)
-            raw_bbox.append(np.asarray(entry, dtype=float))
+                mapping[line[-1]] = idx
+                idx +=1
+            det_bbox.append(np.asarray(entry, dtype=float))
+            uid_map.append(mapping)
 
-    # Scale bboxes to 1440x1080
-    scale = np.array([1, 1440, 1080, 1440, 1080, 1])
-    for frame_data in raw_bbox:
+    # Scale bboxes (1440x1080 by default)
+    for frame_data in det_bbox:
         if len(frame_data) > 0:
             frame_data *= scale
 
-    return raw_bbox
+    return det_bbox, uid_map
 
 
 # Ported from original code in MATLAB
@@ -120,8 +127,15 @@ def img_to_radar_cartesian(img_bboxes: NDArray, H: NDArray) -> NDArray:
     # return ret_val.reshape((1, len(ret_val)))
 
 
-def swap(container: List[float], idx0: int = 0, idx1: int = 1):
-    temp: float = container[idx0]
+def swap(container: List, idx0: int = 0, idx1: int = 1) -> None:
+    """
+    Swaps two elements in a list. Both idx0 and idx 1 should be > 0 and < len(container)
+
+    :param container: List containing two elements
+    :param idx0: Index to the first element
+    :param idx1: Index to the second element
+    """
+    temp = container[idx0]
     container[idx0] = container[idx1]
     container[idx1] = temp
 

@@ -2,18 +2,20 @@ import re
 import os
 
 import numpy as np
+import scipy.ndimage
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
 from convert import calc_conversion_grid
 from radar_utilities import load_yolo, load_transform_mat, polar_in_cartesian, img_to_radar_cartesian, swap, dim_ratio
-from radar_velocity import get_centroids, get_velocities
+from radar_velocity import get_centroids, get_velocities, find_uid_idx
 
-from typing import List
+from typing import List, Dict
 from numpy.typing import NDArray
 
 MAX_RADAR_RADIUS = 30
-
+GRID_DIM_X = 224
+GRID_DIM_Y = 112
 
 def label_conv(label: int) -> List[float]:
     """
@@ -33,13 +35,13 @@ def label_conv(label: int) -> List[float]:
     return mapping[label]
 
 
-def get_radar_bg_intensity(f_num, seq_path):
+def get_radar_bg_intensity(f_num: int, seq_path):
     """
     Obtains the visual representation of a given radar frame
 
     :param f_num: frame number
     :param seq_path: path to the directory of radar detections
-    :return: radar intensity in a flattented array
+    :return: radar intensity in a flattened array
     """
     radar_dir = os.path.join(seq_path, "radar")
 
@@ -51,19 +53,89 @@ def get_radar_bg_intensity(f_num, seq_path):
     return b.flatten()
 
 
-def matched_filter_image(seq_path: str, centroids: List[NDArray], x, y, eval_frame=0):
+def probe_frames_by_uid(uid: int, uid_map: List[map], curr: int, num: int, step:int = 1, backwards:bool = False):
+    """
+    Probe future or past frames to see if it contains a bounding box with the caller specified uid.
+    Starts from the frame that's `num` frames away from the current frame until we find a match.
+
+    :param uid: uid to search
+    :param uid_map: List of maps containing a mapping from uid to the bounding box's index
+    :param curr: current frame
+    :param num: specifies the distance of the starting frame to the current frame
+    :param step: size of the steps
+    :param backwards: Probes past frames if True. Default is False (probe future frames).
+    :return: The furthest frame (<=`num` frames away from the curr) containing a matching uid.
+    """
+    if backwards:
+        for i in range(max(0, curr - num * step), curr, step):
+            if uid in uid_map[i]:
+                return i
+    else:
+        for i in range(min(len(uid_map)-1, curr + 1 + num * step), curr + 1, -step):
+            if uid in uid_map[i]:
+                return i
+
+    return curr
+
+
+def matched_filter_image(seq_path: str, centroids: List[NDArray], x, y, uid_map: List[Dict], eval_frame: int = 50):
+    """
+    Runs match filter for all bounding boxes in a given frame
+    :param seq_path:
+    :param centroids:
+    :param x:
+    :param y:
+    :param uid_map:
+    :param eval_frame:
+    :return:
+    """
     # Check if we have the same number of radar files (background image) and trajectory centroid entries
+    num_frames = 5
+    step_size = 10
     num_radar_files: int = len(os.listdir(os.path.join(seq_path, "radar")))
     assert (num_radar_files == len(centroids))
 
+    #TODO: Put this in a loop to run match filter for every bbox in the frame
+    uid = '26'
+
     # Get the polar radar image
-    base_image = get_radar_bg_intensity(eval_frame, seq_path)
-    base_loc = centroids[eval_frame]
+    z = get_radar_bg_intensity(eval_frame, seq_path)
+    base_image = scale_to_grid(x, y, z)
+    print(uid_map[eval_frame][uid])
+    base_loc = centroids[eval_frame][uid_map[eval_frame][uid]][1:3]
     images_multiply = []
 
-    # for i in range(len(centroids)):
-    #     images_xy =
-    #     obj_loc = centroids[]
+    # Try to find future frames containing matching uid
+    future_frames = range(eval_frame + step_size, probe_frames_by_uid(uid, uid_map, eval_frame, num_frames, step=step_size), step_size)
+    # Find past frames with matching uid if there isn't enough future frames
+    past_frames = range(probe_frames_by_uid(uid, uid_map, eval_frame, num_frames - len(future_frames), backwards=True, step=step_size), eval_frame, step_size)
+
+    # Start with future frames
+    for f in future_frames:
+        print(f)
+        z = get_radar_bg_intensity(f, seq_path)
+        image = scale_to_grid(x, y, z)
+        obj_loc = centroids[f][uid_map[f][uid]][1:3]
+        loc_diff = base_loc - obj_loc
+        print(loc_diff)
+    exit()
+
+
+
+def scale_to_grid(x: NDArray, y: NDArray, z: NDArray):
+    grid = np.zeros((GRID_DIM_X, GRID_DIM_Y))
+    grid_count = np.ones((GRID_DIM_X, GRID_DIM_Y))
+    for i in range(len(z)):
+        if grid[x[i], y[i]] != 0:
+            grid_count[x[i], y[i]] += 1
+        grid[x[i], y[i]] += z[i]
+
+    # Divide each virtual `pixel` by the number of physical `pixel` behind it
+    return grid / grid_count
+
+
+def map_to_grid(x: NDArray, y: NDArray, precision: float = 0.25):
+    return x // precision, y // precision
 
 
 def batch_process_to_img(img_bboxes, seq_path, centroids, centroids_v, radar_label_path, x, y):
@@ -128,6 +200,18 @@ def batch_process_interactive(img_bboxes, seq_path, centroids, centroids_v, x, y
         # Get radar background
         z = get_radar_bg_intensity(f_num, seq_path)
 
+        #TODO: Experimental grid mapping code
+        grid = scale_to_grid(x, y, z)
+        grid = scipy.ndimage.shift(grid, shift=(-40, 50), mode='constant')
+
+        # Visualize the image
+        plt.imshow(grid.T)
+        # plt.axis('square')
+        plt.show()
+
+        # USE NUMPY.roll then fill in zeros?
+        exit()
+
         # Clear previous drawings
         plt.clf()
         # Draw radar background
@@ -167,7 +251,7 @@ def batch_process_interactive(img_bboxes, seq_path, centroids, centroids_v, x, y
 
 if __name__ == '__main__':
     # Build path to image & radar data files
-    src_path = "D:\\UWCR Data\\"
+    src_path = "D:\\UWCR Data2\\"
     seq_name = input("Seq name?\t")
 
     if seq_name == '':
@@ -183,7 +267,7 @@ if __name__ == '__main__':
 
     # Load YOLO detection for images
     print("Loading img bboxes")
-    img_bboxes = load_yolo(os.path.join(seq_path, "images_0", "YOLO"))
+    img_bboxes, uid_mapping = load_yolo(os.path.join(seq_path, "images_0", "YOLO"))
 
     # Load camera ==> radar transformation matrix
     trans_mat: NDArray = load_transform_mat("transform.mat")
@@ -191,16 +275,24 @@ if __name__ == '__main__':
     range_grid, angle_grid = calc_conversion_grid()
     x, y = polar_in_cartesian(range_grid, angle_grid)
 
+
     print("Calculating radar positions & velocities")
     # Calculate image bbox centroids in cartesian radar plane and their velocities
     centroids = get_centroids(img_bboxes, trans_mat)
-    centroids_v = get_velocities(centroids)
+    centroids_v = get_velocities(centroids, uid_mapping)
 
     radar_label_path = os.path.join(seq_path, 'radar_label')
     if not os.path.exists(radar_label_path):
         os.makedirs(radar_label_path)
 
-    matched_filter_image(seq_path, centroids, x, y)
+    # Map x,y to a grid
+    scaled_x, scaled_y = map_to_grid(x, y)
+    scaled_x += int(GRID_DIM_X/2)
+    scaled_x = scaled_x.astype(int)
+    scaled_y = scaled_y.astype(int)
+    # batch_process_interactive(img_bboxes, seq_path, centroids, centroids_v, scaled_x, scaled_y)
+
     # batch_process_to_img(img_bboxes, seq_path, centroids, centroids_v, radar_label_path, x, y)
-    # batch_process_interactive(img_bboxes, seq_path, centroids, centroids_v, x, y)
+
+    matched_filter_image(seq_path, centroids, scaled_x, scaled_y, uid_mapping)
 

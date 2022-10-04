@@ -5,20 +5,23 @@ from radar_utilities import load_yolo, load_transform_mat, polar_in_cartesian, i
 from convert import calc_conversion_grid
 
 from numpy.typing import NDArray
-from typing import List
-
+from typing import List, Dict
 
 
 V_FRAME_DIFF_MAX: int = 20
 V_FRAME_DIFF_MIN: int = 5
-def find_uid_idx(uid: int, radar_bboxes: NDArray) -> int:
-    # Handles of edge case of having no radar bboxes
-    if radar_bboxes.shape[1] == 0:
-        return -1
 
-    for i in range(radar_bboxes.shape[0]):
-        if radar_bboxes[i, 3] == uid:
-            return i
+
+def find_uid_idx(uid: int, uid_map: Dict) -> int:
+    """
+    Looksup a particular uid in a given uid_map
+    :param uid: an integer uid
+    :param uid_map: a map that maps uid's to their corresponding index in that frame
+    :return: the index of the bounding box with the caller supplied uid, -1 if it's not found
+    """
+    if uid in uid_map:
+        return uid_map[uid]
+
     return -1
 
 
@@ -36,7 +39,7 @@ def generate_idx_range(lower:int, upper:int, length:int):
 
 
 def get_centroids(img_bboxes: List[NDArray], trans_mat:NDArray)->List[NDArray]:
-    centroids:List[NDArray] = []
+    centroids: List[NDArray] = []
     for frame in img_bboxes:
         if len(frame) == 0:
             centroids.append(np.asarray([[]]))
@@ -54,7 +57,7 @@ def get_centroids(img_bboxes: List[NDArray], trans_mat:NDArray)->List[NDArray]:
     return centroids
 
 
-def get_velocities(centroids)-> List[NDArray]:
+def get_velocities(centroids: List[NDArray], uid_map:List[Dict])-> List[NDArray]:
     centroids_velocity:List[NDArray] = []
     # A map that holds the last calculated velocity for each
     last_v_by_uid = {}
@@ -76,7 +79,7 @@ def get_velocities(centroids)-> List[NDArray]:
             idx = -1
             for f in indices:
                 # Try to find a bbox in the fth frame that has the same uid
-                idx = find_uid_idx(centroids[i][r, 3], centroids[f])
+                idx = find_uid_idx(centroids[i][r, 3], uid_map[f])
                 if idx != -1:
                     # Use the found bbox to calculate velocity
                     calc_velocity(centroids[i], r, centroids[f], idx, velocities, f - i)

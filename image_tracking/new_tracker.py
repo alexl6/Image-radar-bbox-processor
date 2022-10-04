@@ -3,6 +3,8 @@ from norfair import Detection, Tracker
 from utilities import iou, iou2, filter_cyclists
 from tracklet import tracklet
 
+from numpy.typing import NDArray
+from typing import List
 # Regex
 import re
 
@@ -12,8 +14,16 @@ import os
 import csv
 import shutil
 
+label_map = {0: '0',
+               1: '0',
+               2: '2',
+               3: '0',
+               5: '2',
+               7: '2',
+               80: '0',
+               }
 
-def label_conv(label) -> str:
+def label_conv(label: int) -> str:
     """
     Converts an object label into category labels (e.g. grouping cars, buses, and trucks into the same group)
 
@@ -30,22 +40,13 @@ def label_conv(label) -> str:
                80: '0',
                }
     """
-
-    mapping = {0: '0',
-               1: '0',
-               2: '2',
-               3: '0',
-               5: '2',
-               7: '2',
-               80: '0',
-               }
     try:
-        return mapping[label]
+        return label_map[label]
     except KeyError:
         return '4'
 
 
-def yolo2norfair(bbox, dims=[1440, 1080]) -> Detection:
+def yolo2norfair(bbox: NDArray, dims=[1440, 1080]) -> Detection:
     """
     Converts a single norfair bbox to a norfair detection object
 
@@ -59,7 +60,7 @@ def yolo2norfair(bbox, dims=[1440, 1080]) -> Detection:
     return Detection(new_bbox, score, data=int(bbox[0]), label=label_conv(int(bbox[0])))
 
 
-def yolo2norfair_multi(bboxes, dims=[1440, 1080]):
+def yolo2norfair_multi(bboxes: List[NDArray], dims=[1440, 1080]):
     """
     Convert a list of YOLO detections into a list of norfair detections
 
@@ -89,12 +90,12 @@ def yolo2norfair_multi(bboxes, dims=[1440, 1080]):
     bboxes = filter_cyclists(bboxes)
 
     for bbox in bboxes:
-        if (bbox[3] - bbox[1]) / (bbox[4] - bbox[2]) <= 5:  # Eliminate ultra-wide boxes
+        if bbox[0] in label_map and (bbox[3] - bbox[1]) / (bbox[4] - bbox[2]) <= 5:  # Eliminate ultra-wide boxes
             norfair_dets.append(yolo2norfair(bbox, dims))
     return norfair_dets
 
 
-def filter_by_dim(bboxes):
+def filter_by_dim(bboxes: NDArray) -> NDArray:
     keep_idx = np.ones(bboxes.shape[0])
     for i in range(bboxes.shape[0]):
         ratio = (bboxes[i, 3] - bboxes[i, 1]) / (bboxes[i, 4] - bboxes[i, 2])
@@ -103,7 +104,8 @@ def filter_by_dim(bboxes):
             keep_idx[i] = 0
     return bboxes[keep_idx.astype(bool), :]
 
-def remove_duplitcates(bboxes):
+
+def remove_duplitcates(bboxes: NDArray) -> NDArray:
     keep_idx = np.ones(bboxes.shape[0])
     for i in range(bboxes.shape[0]):
         for j in range(i + 1, bboxes.shape[0]):
@@ -112,7 +114,7 @@ def remove_duplitcates(bboxes):
     return bboxes[keep_idx.astype(bool), :]
 
 
-def load_yolo(dir_path):
+def load_yolo(dir_path: str) -> List[NDArray]:
     """
     Load all yolo formatted detections from a given directory where every detection is in file named '[frame_num].txt'
     Expected file is space separated where each row represents a detection formatted as:
@@ -232,12 +234,14 @@ def reversed_iou(det, pred) -> float:
     return 1 - iou(det, pred)
 
 
-def norfair2yolo(bbox, dims=[1440, 1080], do_clip=True):
+def norfair2yolo(bbox: NDArray, dims=[1440, 1080], do_clip=True):
     """
     Converts a norfair bbox into a YOLO bbox for an image of size dims.
 
     :param bbox: Norfair bbox (x1, y1, x2, y2)
     :param dims: Dimensions of the image. Defaults to 1440x1080
+    :param do_clip: The results will be constrained to between 0,1 if True.
+                    This parameter is for compatibility with https://www.makesense.ai
     :return: np.array of a YOLO format bbox
     """
 
