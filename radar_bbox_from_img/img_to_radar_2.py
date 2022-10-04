@@ -103,21 +103,35 @@ def matched_filter_image(seq_path: str, centroids: List[NDArray], x, y, uid_map:
     base_image = scale_to_grid(x, y, z)
     print(uid_map[eval_frame][uid])
     base_loc = centroids[eval_frame][uid_map[eval_frame][uid]][1:3]
-    images_multiply = []
 
     # Try to find future frames containing matching uid
     future_frames = range(eval_frame + step_size, probe_frames_by_uid(uid, uid_map, eval_frame, num_frames, step=step_size), step_size)
     # Find past frames with matching uid if there isn't enough future frames
     past_frames = range(probe_frames_by_uid(uid, uid_map, eval_frame, num_frames - len(future_frames), backwards=True, step=step_size), eval_frame, step_size)
 
+    frames = list(past_frames) + list(future_frames)
+    # Predetermine images multiply dimensions based on num of frames avaiable
+    images_multiply = np.empty((len(frames) * GRID_DIM_X * GRID_DIM_Y)).reshape((len(frames), GRID_DIM_X, GRID_DIM_Y))
+    assert(len(images_multiply.shape)==3)
+    accumulated_sum = np.zeros((GRID_DIM_X, GRID_DIM_Y))
+    # images_multiply = []
+
     # Start with future frames
-    for f in future_frames:
-        print(f)
+    for i, f in enumerate(frames):
         z = get_radar_bg_intensity(f, seq_path)
         image = scale_to_grid(x, y, z)
         obj_loc = centroids[f][uid_map[f][uid]][1:3]
         loc_diff = base_loc - obj_loc
-        print(loc_diff)
+
+        image = scipy.ndimage.shift(image, shift=loc_diff, mode='constant')
+        image_multiply = np.multiply(image, base_image)
+        accumulated_sum += image_multiply
+        # images_multiply[i] = image_multiply
+        # print(loc_diff)
+    # output_img = np.sum(image_multiply, axis=0)
+    # plt.imshow(output_img)
+    plt.imshow(accumulated_sum.T)
+    plt.show()
     exit()
 
 
