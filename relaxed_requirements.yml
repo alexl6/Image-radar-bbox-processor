@@ -1,0 +1,56 @@
+name: norfair_tracking
+channels:
+- defaults
+dependencies:
+- blas=1.0
+- bzip2=1.0.*
+- ca-certificates=2022.07.*
+- certifi=2022.6.*
+- freetype=2.10.*
+- intel-openmp=2021.4.*
+- jpeg=9e
+- lerc=3.0
+- libdeflate=1.8
+- libffi=3.4.*
+- libpng=1.6.*
+- libtiff=4.4.*
+- libwebp=1.2.*
+- lz4-c=1.9.*
+- mkl=2021.4.*
+- mkl-service=2.4.*
+- mkl_fft=1.3.*
+- mkl_random=1.2.*
+- numpy=1.23.*
+- numpy-base=1.23.*
+- openssl=1.1.*
+- pip=22.1.*
+- python=3.10.*
+- setuptools=61.2.*
+- six=1.16.*
+- sqlite=3.39.*
+- tk=8.6.*
+- tzdata=2022a
+- vc=14.2
+- vs2015_runtime=14.27.*
+- wheel=0.37.*
+- wincertstore=0.2
+- xz=5.2.*
+- zlib=1.2.*
+- zstd=1.5.*
+- pip:
+  - colorama==0.4.*
+  - commonmark==0.9.*
+  - cycler==0.11.*
+  - filterpy==1.4.*
+  - fonttools==4.36.*
+  - kiwisolver==1.4.*
+  - matplotlib==3.5.*
+  - norfair==1.0.*
+  - packaging==21.3
+  - pillow==9.2.*
+  - pygments==2.13.*
+  - pyparsing==3.0.*
+  - python-dateutil==2.8.*
+  - rich==9.13.*
+  - scipy==1.9.*
+  - typing-extensions==3.10.*
