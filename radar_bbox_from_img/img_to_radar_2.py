@@ -241,10 +241,10 @@ def batch_process_interactive(img_bboxes, seq_path, centroids, centroids_v, x, y
         # grid = scale_to_grid(x, y, z)
         # plt.imshow(grid.T)
         uids = list(uid_mapping[f_num].keys())
-        uid = '24'
+        uid = '3'
         print("Match filter on type %s"%img_bboxes[f_num][uid_mapping[f_num][uid], 0])
         #TODO: Experimental
-        plt.imshow(matched_filter_image(seq_path, centroids, x, y, uid_mapping, f_num, uid), vmax=0.7)
+        plt.imshow(matched_filter_image(seq_path, centroids, x, y, uid_mapping, f_num, uid), vmax=0.4)
         plt.ylim((0, GRID_DIM_Y))
 
         # Draw every box in this frame
@@ -408,7 +408,7 @@ if __name__ == '__main__':
     seq_name = input("Seq name?\t")
 
     if seq_name == '':
-        seq_name = "2019_04_30_mlms001"
+        seq_name = "2019_05_28_cm1s009"
 
     date_pattern = re.compile("\d{4}_\d{2}_\d{2}")
     date = date_pattern.search(seq_name).group()
