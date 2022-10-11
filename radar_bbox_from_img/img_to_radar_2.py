@@ -14,8 +14,9 @@ from typing import List, Dict
 from numpy.typing import NDArray
 
 MAX_RADAR_RADIUS = 30
-GRID_DIM_X = 224
-GRID_DIM_Y = 112
+GRID_DIM_X = 280
+GRID_DIM_Y = 140
+GRID_RES = 0.2
 
 def label_conv(label: int) -> List[float]:
     """
@@ -78,7 +79,7 @@ def probe_frames_by_uid(uid: int, uid_map: List[map], curr: int, num: int, step:
     return curr
 
 
-def matched_filter_image(seq_path: str, centroids: List[NDArray], x, y, uid_map: List[Dict], eval_frame: int = 50):
+def matched_filter_image(seq_path: str, centroids: List[NDArray], x, y, uid_map: List[Dict], eval_frame: int = 100, uid = '0'):
     """
     Runs match filter for all bounding boxes in a given frame
     :param seq_path:
@@ -89,19 +90,20 @@ def matched_filter_image(seq_path: str, centroids: List[NDArray], x, y, uid_map:
     :param eval_frame:
     :return:
     """
+    print(eval_frame)
     # Check if we have the same number of radar files (background image) and trajectory centroid entries
-    num_frames = 5
-    step_size = 10
+    num_frames = 10
+    step_size = 3
     num_radar_files: int = len(os.listdir(os.path.join(seq_path, "radar")))
     assert (num_radar_files == len(centroids))
 
     #TODO: Put this in a loop to run match filter for every bbox in the frame
-    uid = '26'
+    # uid = '1'
 
     # Get the polar radar image
     z = get_radar_bg_intensity(eval_frame, seq_path)
     base_image = scale_to_grid(x, y, z)
-    print(uid_map[eval_frame][uid])
+
     base_loc = centroids[eval_frame][uid_map[eval_frame][uid]][1:3]
 
     # Try to find future frames containing matching uid
@@ -110,29 +112,38 @@ def matched_filter_image(seq_path: str, centroids: List[NDArray], x, y, uid_map:
     past_frames = range(probe_frames_by_uid(uid, uid_map, eval_frame, num_frames - len(future_frames), backwards=True, step=step_size), eval_frame, step_size)
 
     frames = list(past_frames) + list(future_frames)
+    print(frames)
     # Predetermine images multiply dimensions based on num of frames avaiable
     images_multiply = np.empty((len(frames) * GRID_DIM_X * GRID_DIM_Y)).reshape((len(frames), GRID_DIM_X, GRID_DIM_Y))
     assert(len(images_multiply.shape)==3)
     accumulated_sum = np.zeros((GRID_DIM_X, GRID_DIM_Y))
+    accumulated_sum2 = np.zeros((GRID_DIM_X, GRID_DIM_Y))
+    last_img = base_image
     # images_multiply = []
+    # plt.imshow(base_image)
+    # plt.show()
+    # input()
 
     # Start with future frames
     for i, f in enumerate(frames):
         z = get_radar_bg_intensity(f, seq_path)
         image = scale_to_grid(x, y, z)
-        obj_loc = centroids[f][uid_map[f][uid]][1:3]
-        loc_diff = base_loc - obj_loc
+        # plt.imshow(image)
+        # plt.show()
+        # input()
 
+        obj_loc = centroids[f][uid_map[f][uid]][1:3]
+        loc_diff = (base_loc - obj_loc) / GRID_RES
+        print(loc_diff)
         image = scipy.ndimage.shift(image, shift=loc_diff, mode='constant')
+        # plt.imsave("%i.png"%i, image)
         image_multiply = np.multiply(image, base_image)
         accumulated_sum += image_multiply
-        # images_multiply[i] = image_multiply
-        # print(loc_diff)
-    # output_img = np.sum(image_multiply, axis=0)
-    # plt.imshow(output_img)
-    plt.imshow(accumulated_sum.T)
-    plt.show()
-    exit()
+
+        accumulated_sum2 += np.multiply(image, last_img)
+        last_img = image
+
+    return accumulated_sum2.T
 
 
 
@@ -197,7 +208,7 @@ def batch_process_to_img(img_bboxes, seq_path, centroids, centroids_v, radar_lab
         plt.savefig(os.path.join(radar_label_path, fig_name))
 
 
-def batch_process_interactive(img_bboxes, seq_path, centroids, centroids_v, x, y):
+def batch_process_interactive(img_bboxes, seq_path, centroids, centroids_v, x, y, uid_mapping):
     # Enable interactive mode
     plt.ion()
     while True:
@@ -211,25 +222,23 @@ def batch_process_interactive(img_bboxes, seq_path, centroids, centroids_v, x, y
         # Retry if frame number out of range
         if f_num < 0 or f_num >= len(img_bboxes):
             continue
-        # Get radar background
-        z = get_radar_bg_intensity(f_num, seq_path)
 
-        #TODO: Experimental grid mapping code
-        grid = scale_to_grid(x, y, z)
-        grid = scipy.ndimage.shift(grid, shift=(-40, 50), mode='constant')
-
-        # Visualize the image
-        plt.imshow(grid.T)
-        # plt.axis('square')
-        plt.show()
-
-        # USE NUMPY.roll then fill in zeros?
-        exit()
+        # # Get radar background
+        # z = get_radar_bg_intensity(f_num, seq_path)
 
         # Clear previous drawings
         plt.clf()
-        # Draw radar background
-        plt.scatter(x, y, c=z)
+        # # Draw radar background (Raw)
+        # plt.scatter(x, y, c=z)
+        # # Draw radar background (Scaled)
+        # grid = scale_to_grid(x, y, z)
+        # plt.imshow(grid.T)
+        uids = list(uid_mapping[f_num].keys())
+        uid = '3'
+        #TODO: Experimental
+        plt.imshow(matched_filter_image(seq_path, centroids, x, y, uid_mapping, f_num, uid))
+        plt.ylim((0, 280))
+
         # Draw every box in this frame
         for i in range(img_bboxes[f_num].shape[0]):
             # Skip bboxes outside of radar range
@@ -251,6 +260,64 @@ def batch_process_interactive(img_bboxes, seq_path, centroids, centroids_v, x, y
                 if dim_ratio(img_bboxes[f_num][i, :]) > 2:
                     swap(radar_bbox_dim)
 
+            # plt.gca().add_patch(patches.Rectangle(
+            #     (centroids[f_num][i, 1] - radar_bbox_dim[0] / 2, centroids[f_num][i, 2] - radar_bbox_dim[1] / 2),
+            #     radar_bbox_dim[0], radar_bbox_dim[1], fill=True, color='pink', alpha=0.35,
+            #     zorder=100))
+            # print("%i, %i" % (centroids[f_num][i, 1], centroids[f_num][i, 2]))
+            # print("%i, %i"%(centroids[f_num][i, 1]/GRID_RES + GRID_DIM_X/2, centroids[f_num][i, 2]/GRID_RES))
+
+            plt.gca().add_patch(patches.Rectangle(
+                ((centroids[f_num][i, 1] - radar_bbox_dim[0] / 2)/GRID_RES + GRID_DIM_X/2, (centroids[f_num][i, 2] - radar_bbox_dim[1] / 2)/GRID_RES),
+                radar_bbox_dim[0]/GRID_RES, radar_bbox_dim[1]/GRID_RES, fill=True, color='pink', alpha=0.25,
+                zorder=100))
+        # Use the same scaling for x,y-axis, configure bounds, display
+        # plt.axis('square')
+        # plt.xlim((-MAX_RADAR_RADIUS, MAX_RADAR_RADIUS))
+        # plt.ylim((0, MAX_RADAR_RADIUS))
+        # plt.scatter(radar_posn[:,1], radar_posn[:, 2], c='red', alpha = 0.8)
+        plt.show()
+
+
+
+def batch_process_interactive2(img_bboxes, seq_path, centroids, centroids_v, x, y):
+    # Enable interactive mode
+    plt.ion()
+    while True:
+        # Take user input/exit gracefully
+        try:
+            f_num = int(input("Frame num?\t"))
+        except EOFError:
+            print("Exiting...")
+            exit()
+        # Retry if frame number out of range
+        if f_num < 0 or f_num >= len(img_bboxes):
+            continue
+        # Get radar background
+        z = get_radar_bg_intensity(f_num, seq_path)
+        # Clear previous drawings
+        plt.clf()
+        # Draw radar background
+        plt.scatter(x, y, c=z)
+        # Draw every box in this frame
+        for i in range(img_bboxes[f_num].shape[0]):
+            # Skip bboxes outside of radar range
+            if centroids[f_num][i, 2] > MAX_RADAR_RADIUS:
+                continue
+            # Get the bounding box dimensions from object type label
+            # Assume object is 'vertical' by default
+            radar_bbox_dim: List[float] = label_conv(img_bboxes[f_num][i, 0])
+            # first check the velocity, prefer determining orientation by velocity
+            if np.sum(np.abs(centroids_v[f_num][i, 0:2] ** 2)) > 0.08:
+                # If there's greater horizontal movement
+                if abs(centroids_v[f_num][i, 0]) / abs(centroids_v[f_num][i, 0]) > 1.1:
+                    swap(radar_bbox_dim)
+            # Check box shape if the object is reasonably far away
+            elif centroids[f_num][i, 2] > 8 or (abs(centroids[f_num][i, 1]) < 1 and centroids[f_num][i, 2] > 5):
+                # Use the bounding box aspect ratio to determine object orientation
+                if dim_ratio(img_bboxes[f_num][i, :]) > 2:
+                    swap(radar_bbox_dim)
+            print("%i, %i"%(centroids[f_num][i, 1], centroids[f_num][i, 2]))
             plt.gca().add_patch(patches.Rectangle(
                 (centroids[f_num][i, 1] - radar_bbox_dim[0] / 2, centroids[f_num][i, 2] - radar_bbox_dim[1] / 2),
                 radar_bbox_dim[0], radar_bbox_dim[1], fill=True, color='pink', alpha=0.35,
@@ -262,14 +329,13 @@ def batch_process_interactive(img_bboxes, seq_path, centroids, centroids_v, x, y
         # plt.scatter(radar_posn[:,1], radar_posn[:, 2], c='red', alpha = 0.8)
         plt.show()
 
-
 if __name__ == '__main__':
     # Build path to image & radar data files
-    src_path = "D:\\UWCR Data2\\"
+    src_path = "D:\\UWCR Data\\"
     seq_name = input("Seq name?\t")
 
     if seq_name == '':
-        seq_name = "2019_04_09_pms1000"
+        seq_name = "2019_04_30_mlms001"
 
     date_pattern = re.compile("\d{4}_\d{2}_\d{2}")
     date = date_pattern.search(seq_name).group()
@@ -300,13 +366,20 @@ if __name__ == '__main__':
         os.makedirs(radar_label_path)
 
     # Map x,y to a grid
-    scaled_x, scaled_y = map_to_grid(x, y)
+    scaled_x, scaled_y = map_to_grid(x, y, GRID_RES)
     scaled_x += int(GRID_DIM_X/2)
     scaled_x = scaled_x.astype(int)
     scaled_y = scaled_y.astype(int)
-    # batch_process_interactive(img_bboxes, seq_path, centroids, centroids_v, scaled_x, scaled_y)
+
+    if input("User matched filter? ") == '0':
+        batch_process_interactive2(img_bboxes, seq_path, centroids, centroids_v, x, y)
+    else:
+        batch_process_interactive(img_bboxes, seq_path, centroids, centroids_v, scaled_x, scaled_y, uid_mapping)
+
 
     # batch_process_to_img(img_bboxes, seq_path, centroids, centroids_v, radar_label_path, x, y)
-
-    matched_filter_image(seq_path, centroids, scaled_x, scaled_y, uid_mapping)
+    plt.ion()
+    while True:
+        f_num = int(input("F num?"))
+        matched_filter_image(seq_path, centroids, scaled_x, scaled_y, uid_mapping, f_num)
 
