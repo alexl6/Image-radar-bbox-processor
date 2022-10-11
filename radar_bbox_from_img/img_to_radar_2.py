@@ -97,9 +97,6 @@ def matched_filter_image(seq_path: str, centroids: List[NDArray], x, y, uid_map:
     num_radar_files: int = len(os.listdir(os.path.join(seq_path, "radar")))
     assert (num_radar_files == len(centroids))
 
-    #TODO: Put this in a loop to run match filter for every bbox in the frame
-    # uid = '1'
-
     # Get the polar radar image
     z = get_radar_bg_intensity(eval_frame, seq_path)
     base_image = scale_to_grid(x, y, z)
@@ -236,8 +233,8 @@ def batch_process_interactive(img_bboxes, seq_path, centroids, centroids_v, x, y
         uids = list(uid_mapping[f_num].keys())
         uid = '3'
         #TODO: Experimental
-        plt.imshow(matched_filter_image(seq_path, centroids, x, y, uid_mapping, f_num, uid))
-        plt.ylim((0, 280))
+        plt.imshow(matched_filter_image(seq_path, centroids, x, y, uid_mapping, f_num, uid), vmax=0.7)
+        plt.ylim((0, GRID_DIM_Y))
 
         # Draw every box in this frame
         for i in range(img_bboxes[f_num].shape[0]):
