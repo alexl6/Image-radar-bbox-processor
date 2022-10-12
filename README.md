@@ -10,8 +10,7 @@ A set of more 'relaxed' version of environment dependencies is supplied to help 
 ### Overview of data processing 
 1. Perform bounding box tracking using `image_tracking`
 2. Manually find common points in radar and camera dataset (using the tracked boudning box data and `visualization.py` tool)
-3. Calculate camera-radar conversion matrix using the tools found in `cr_transform`
+3. Calculate camera-radar conversion matrix using the tools found in `cr_transform` (requires MATLAB)
 4. Export the transformation matrix to `radar_bbox_from_img`
-5. Use `imag_to_radar_2.py` to convert camera bbox to radar bbox (In-progress)
-
-
+5. Use `imag_to_radar_2.py` to convert camera bbox to radar bbox with 2D matched filter (In-progress)
+6. Output radar label (Upcoming)
