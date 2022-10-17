@@ -57,6 +57,12 @@ def get_radar_bg_intensity(f_num: int, seq_path):
 
 
 def fnum_prompt(length: int):
+    """
+    Prompt the user for a frame number or exit gracefully if the user types EOF
+
+    :param length: The length of the sequence (aka. maximum accepted frame number + 1)
+    :return: parsed frame number
+    """
     while True:
         # Take user input/exit gracefully
         try:
@@ -257,7 +263,7 @@ def matched_filter_interactive(img_bboxes, seq_path, centroids, centroids_v, x, 
 
         uids = list(uid_mapping[f_num].keys())
         print(uids)
-        uid = '1'
+        uid = '3'
 
         # print("Match filter on type %s"%img_bboxes[f_num][uid_mapping[f_num][uid], 0])
         matched_img = matched_filter_image(seq_path, centroids, scaled_x, scaled_y, uid_mapping, f_num, uid)
@@ -290,17 +296,18 @@ def matched_filter_interactive(img_bboxes, seq_path, centroids, centroids_v, x, 
 
 
             # Experimental: Shifts bounding box in the polar coordinate system to maximize the area sum
-            radar_area_sum(scaled_centroid, scaled_radar_dim, matched_img)
-            angle, dist = to_polar_scaled(scaled_centroid)
-            dist += 5   # Change distance by 0.5 m increment
-            shifted_centroid = to_cartesian_scaled(angle, dist)
+            shifted_centroids = maximize_area_sum(scaled_centroid, scaled_radar_dim, matched_img)
 
-            radar_area_sum(shifted_centroid, scaled_radar_dim, matched_img)
+            plt.gca().add_patch(patches.Rectangle(
+                (shifted_centroids[0] - scaled_radar_dim[0] / 2 + GRID_DIM_X / 2,
+                 shifted_centroids[1] - scaled_radar_dim[1] / 2),
+                scaled_radar_dim[0], scaled_radar_dim[1], fill=True, color='pink', alpha=0.25,
+                zorder=100))
 
             plt.gca().add_patch(patches.Rectangle(
                 (scaled_centroid[0] - scaled_radar_dim[0] / 2 + GRID_DIM_X / 2,
                  scaled_centroid[1] - scaled_radar_dim[1] / 2),
-                scaled_radar_dim[0], scaled_radar_dim[1], fill=True, color='pink', alpha=0.25,
+                scaled_radar_dim[0], scaled_radar_dim[1], fill=True, color='yellow', alpha=0.25,
                 zorder=100))
 
             plt.scatter(GRID_DIM_X/2, 0, color='blue')
@@ -310,6 +317,48 @@ def matched_filter_interactive(img_bboxes, seq_path, centroids, centroids_v, x, 
         # plt.ylim((0, MAX_RADAR_RADIUS))
         # plt.scatter(radar_posn[:,1], radar_posn[:, 2], c='red', alpha = 0.8)
         plt.show()
+
+
+def maximize_area_sum(scaled_centroid: NDArray, scaled_radar_dim: NDArray, matched_img: NDArray, shift_step: int = 2):
+    # Experimental: Shifts bounding box in the polar coordinate system to maximize the area sum
+    angle, dist = to_polar(scaled_centroid)
+    # Calculate area sum without shifting the bounding box
+    prev_area_sum = radar_area_sum(scaled_centroid, scaled_radar_dim, matched_img)
+    print("Original: %3f"%prev_area_sum)
+    # Try to move the bounding box further/closer to the radar
+    # Change distance by 0.5 m increment
+    further_area_sum = radar_area_sum(to_cartesian(angle, dist + shift_step), scaled_radar_dim, matched_img)
+    closer_area_sum = radar_area_sum(to_cartesian(angle, dist - shift_step), scaled_radar_dim, matched_img)
+
+    # Check if the area sum is already maximized (locally, along the same fixed radar angle)
+    if further_area_sum / prev_area_sum < 1 and closer_area_sum / prev_area_sum < 1:
+        return scaled_centroid
+
+    # Decide whether to move further away/closer
+    if further_area_sum < closer_area_sum:
+        shift_step *= -1
+        prev_area_sum = closer_area_sum
+        print("closer")
+    else:
+        prev_area_sum = further_area_sum
+        print("further")
+
+    prev_centroid = to_cartesian(angle, dist + shift_step)
+
+    # Shifts until the area sum has peaked
+    for i in range(2, 9):
+        curr_centroid = to_cartesian(angle, dist + shift_step * i)
+        curr_area_sum = radar_area_sum(curr_centroid, scaled_radar_dim, matched_img)
+        if curr_area_sum < prev_area_sum:
+            print("Shifted: %3f" % prev_area_sum)
+            return prev_centroid
+
+        prev_area_sum = curr_area_sum
+        prev_centroid = curr_centroid
+
+    print("Shifted: %3f" % curr_area_sum)
+    return curr_centroid
+
 
 
 def radar_area_sum(scaled_centroid: NDArray, scaled_radar_dim: NDArray, matched_img):
@@ -324,15 +373,15 @@ def radar_area_sum(scaled_centroid: NDArray, scaled_radar_dim: NDArray, matched_
     sum = np.sum(matched_img[
                  np.clip(lower_bounds[0], 0, GRID_DIM_X):np.clip(upper_bounds[0], 0, GRID_DIM_X),
                  np.clip(lower_bounds[1], 0, GRID_DIM_X):np.clip(upper_bounds[1], 0, GRID_DIM_X)])
-    print("Sum %3f"%sum)
     # DEBUG points
-    plt.scatter(np.clip(upper_bounds[0], 0, GRID_DIM_X), np.clip(upper_bounds[1], 0, GRID_DIM_Y), color='pink')
-    plt.scatter(np.clip(lower_bounds[0], 0, GRID_DIM_X), np.clip(lower_bounds[1], 0, GRID_DIM_Y), color='pink')
+    # print("Sum %3f"%sum)
+    # plt.scatter(np.clip(upper_bounds[0], 0, GRID_DIM_X), np.clip(upper_bounds[1], 0, GRID_DIM_Y), color='pink')
+    # plt.scatter(np.clip(lower_bounds[0], 0, GRID_DIM_X), np.clip(lower_bounds[1], 0, GRID_DIM_Y), color='pink')
 
     return sum
 
 
-def to_polar_scaled(scaled_centroid: NDArray):
+def to_polar(scaled_centroid: NDArray):
     angle = math.atan(scaled_centroid[0] / scaled_centroid[1])
     dist = math.sqrt(np.sum(scaled_centroid ** 2))
 
@@ -340,7 +389,7 @@ def to_polar_scaled(scaled_centroid: NDArray):
     return angle, dist
 
 
-def to_cartesian_scaled(angle, dist):
+def to_cartesian(angle, dist):
     x = math.sin(angle) * dist
     y = math.cos(angle) * dist
 
@@ -491,7 +540,7 @@ if __name__ == '__main__':
     seq_name = input("Seq name?\t")
 
     if seq_name == '':
-        seq_name = "2019_05_28_cm1s009"
+        seq_name = "2019_04_30_mlms001"
 
     date_pattern = re.compile("\d{4}_\d{2}_\d{2}")
     date = date_pattern.search(seq_name).group()
