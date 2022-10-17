@@ -127,7 +127,7 @@ def img_to_radar_cartesian(img_bboxes: NDArray, H: NDArray) -> NDArray:
     # return ret_val.reshape((1, len(ret_val)))
 
 
-def swap(container: List, idx0: int = 0, idx1: int = 1) -> None:
+def swap(container: NDArray, idx0: int = 0, idx1: int = 1) -> None:
     """
     Swaps two elements in a list. Both idx0 and idx 1 should be > 0 and < len(container)
 
