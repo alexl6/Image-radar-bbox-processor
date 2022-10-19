@@ -1,7 +1,7 @@
 import os, re
 import numpy as np
 
-from radar_utilities import load_yolo, load_transform_mat, polar_in_cartesian, img_to_radar_cartesian
+from radar_utilities import load_yolo, load_mat, polar_in_cartesian, img_to_radar_cartesian
 from convert import calc_conversion_grid
 
 from numpy.typing import NDArray
@@ -115,7 +115,7 @@ if __name__ == '__main__':
     img_bboxes = load_yolo(os.path.join(seq_path, "images_0", "YOLO"))
 
     # Load transformation matrix
-    trans_mat: NDArray = load_transform_mat("transform.mat")
+    trans_mat: NDArray = load_mat("transform.mat")
 
     # Calculate the conversion grid
     range_grid, angle_grid = calc_conversion_grid()

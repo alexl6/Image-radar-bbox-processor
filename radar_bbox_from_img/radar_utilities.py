@@ -69,7 +69,7 @@ def transform(H: NDArray, coordinates: NDArray) -> NDArray:
     return calculated_points
 
 
-def load_transform_mat(path: str, var_name: str = 'HRadar0') -> NDArray:
+def load_mat(path: str, var_name: str = 'HRadar0') -> NDArray:
     """
     Loads a transformation matrix from a MATLAB .mat file
 

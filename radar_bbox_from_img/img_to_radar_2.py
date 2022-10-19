@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
 from convert import calc_conversion_grid
-from radar_utilities import load_yolo, load_transform_mat, polar_in_cartesian, img_to_radar_cartesian, swap, dim_ratio
+from radar_utilities import load_yolo, load_mat, polar_in_cartesian, img_to_radar_cartesian, swap, dim_ratio
 from radar_velocity import get_centroids, get_velocities, find_uid_idx
 
 from typing import List, Dict, Tuple
@@ -54,6 +54,7 @@ def get_radar_bg_intensity(f_num: int, seq_path):
     b = a[:, :, 0] ** 2 + a[:, :, 1] ** 2
 
     return b.flatten()
+
 
 
 def fnum_prompt(length: int):
@@ -266,9 +267,19 @@ def matched_filter_interactive(img_bboxes, seq_path, centroids, centroids_v, x, 
         uid = '3'
 
         # print("Match filter on type %s"%img_bboxes[f_num][uid_mapping[f_num][uid], 0])
+        # Calculate matched fitler iamge
         matched_img = matched_filter_image(seq_path, centroids, scaled_x, scaled_y, uid_mapping, f_num, uid)
-        plt.imshow(matched_img.T, vmax=0.6)
+
+        # Display the matched filter image as background
+        # plt.imshow(matched_img.T, vmax=0.6)
+        # OR Display the original background
+        z = get_radar_bg_intensity(f_num, seq_path)
+        image = scale_to_grid(scaled_x, scaled_y, z).T
+        plt.imshow(image)
+
+
         plt.ylim((0, GRID_DIM_Y))
+
 
         # Draw every box in this frame
         for i in range(img_bboxes[f_num].shape[0]):
@@ -307,7 +318,7 @@ def matched_filter_interactive(img_bboxes, seq_path, centroids, centroids_v, x, 
             plt.gca().add_patch(patches.Rectangle(
                 (scaled_centroid[0] - scaled_radar_dim[0] / 2 + GRID_DIM_X / 2,
                  scaled_centroid[1] - scaled_radar_dim[1] / 2),
-                scaled_radar_dim[0], scaled_radar_dim[1], fill=True, color='yellow', alpha=0.25,
+                scaled_radar_dim[0], scaled_radar_dim[1], fill=True, color='green', alpha=0.25,
                 zorder=100))
 
             plt.scatter(GRID_DIM_X/2, 0, color='blue')
@@ -555,7 +566,7 @@ if __name__ == '__main__':
     img_bboxes, uid_mapping = load_yolo(os.path.join(seq_path, "images_0", "YOLO"))
 
     # Load camera ==> radar transformation matrix
-    trans_mat: NDArray = load_transform_mat("transform.mat")
+    trans_mat: NDArray = load_mat("transform.mat")
     # Calculate polar to cartesian conversion
     range_grid, angle_grid = calc_conversion_grid()
     x, y = polar_in_cartesian(range_grid, angle_grid)
