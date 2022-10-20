@@ -263,57 +263,48 @@ def matched_filter_interactive(img_bboxes, seq_path, centroids, centroids_v, x, 
         plt.clf()
 
         uids = list(uid_mapping[f_num].keys())
-        print(uids)
-        uid = '3'
 
-        # print("Match filter on type %s"%img_bboxes[f_num][uid_mapping[f_num][uid], 0])
-        # Calculate matched fitler iamge
-        matched_img = matched_filter_image(seq_path, centroids, scaled_x, scaled_y, uid_mapping, f_num, uid)
-
-        # Display the matched filter image as background
-        # plt.imshow(matched_img.T, vmax=0.6)
-        # OR Display the original background
+        # Display the original background
         z = get_radar_bg_intensity(f_num, seq_path)
         image = scale_to_grid(scaled_x, scaled_y, z).T
+        plt.ylim((0, GRID_DIM_Y))
         plt.imshow(image)
 
+        # Run matched filter on every bounding box in the frame
+        for uid in uids:
+            # print("Match filter on type %s"%img_bboxes[f_num][uid_mapping[f_num][uid], 0])
+            # Calculate matched filter image
+            matched_img = matched_filter_image(seq_path, centroids, scaled_x, scaled_y, uid_mapping, f_num, uid)
+            # Display the matched filter image as background
+            # plt.imshow(matched_img.T, vmax=0.6)
 
-        plt.ylim((0, GRID_DIM_Y))
-
-
-        # Draw every box in this frame
-        for i in range(img_bboxes[f_num].shape[0]):
+            # Obtain the index of the selected bounding box
+            bbox_idx = uid_mapping[f_num][uid]
             # Skip bboxes outside of radar range
-            if centroids[f_num][i, 2] > MAX_RADAR_RADIUS:
+            if centroids[f_num][bbox_idx, 2] > MAX_RADAR_RADIUS:
                 continue
 
             # Get the bounding box dimensions from object type label
             # Assume object is 'vertical' by default
-            radar_bbox_dim: NDArray = np.asarray(label_conv(img_bboxes[f_num][i, 0]))
+            radar_bbox_dim: NDArray = np.asarray(label_conv(img_bboxes[f_num][bbox_idx, 0]))
 
             # first check the velocity, prefer determining orientation by velocity
-            if np.sum(np.abs(centroids_v[f_num][i, 0:2] ** 2)) > 0.08:
+            if np.sum(np.abs(centroids_v[f_num][bbox_idx, 0:2] ** 2)) > 0.08:
                 # If there's greater horizontal movement
-                if abs(centroids_v[f_num][i, 0]) / abs(centroids_v[f_num][i, 0]) > 1.1:
+                if abs(centroids_v[f_num][bbox_idx, 0]) / abs(centroids_v[f_num][bbox_idx, 0]) > 1.1:
                     swap(radar_bbox_dim)
             # Check box shape if the object is reasonably far away
-            elif centroids[f_num][i, 2] > 8 or (abs(centroids[f_num][i, 1]) < 1 and centroids[f_num][i, 2] > 5):
+            elif centroids[f_num][bbox_idx, 2] > 8 or (abs(centroids[f_num][bbox_idx, 1]) < 1 and centroids[f_num][bbox_idx, 2] > 5):
                 # Use the bounding box aspect ratio to determine object orientation
-                if dim_ratio(img_bboxes[f_num][i, :]) > 2:
+                if dim_ratio(img_bboxes[f_num][bbox_idx, :]) > 2.3:
                     swap(radar_bbox_dim)
 
-            scaled_centroid = centroids[f_num][i, 1:3] / GRID_RES
+            # Pre-calculate scaled centroid & radar dim
+            scaled_centroid = centroids[f_num][bbox_idx, 1:3] / GRID_RES
             scaled_radar_dim = radar_bbox_dim / GRID_RES
 
-
-            # Experimental: Shifts bounding box in the polar coordinate system to maximize the area sum
+            # Shifts bounding box in the polar coordinate system to maximize the area sum
             shifted_centroids = maximize_area_sum(scaled_centroid, scaled_radar_dim, matched_img)
-
-            plt.gca().add_patch(patches.Rectangle(
-                (shifted_centroids[0] - scaled_radar_dim[0] / 2 + GRID_DIM_X / 2,
-                 shifted_centroids[1] - scaled_radar_dim[1] / 2),
-                scaled_radar_dim[0], scaled_radar_dim[1], fill=True, color='pink', alpha=0.25,
-                zorder=100))
 
             plt.gca().add_patch(patches.Rectangle(
                 (scaled_centroid[0] - scaled_radar_dim[0] / 2 + GRID_DIM_X / 2,
@@ -321,25 +312,40 @@ def matched_filter_interactive(img_bboxes, seq_path, centroids, centroids_v, x, 
                 scaled_radar_dim[0], scaled_radar_dim[1], fill=True, color='green', alpha=0.25,
                 zorder=100))
 
-            plt.scatter(GRID_DIM_X/2, 0, color='blue')
+            plt.gca().add_patch(patches.Rectangle(
+                (shifted_centroids[0] - scaled_radar_dim[0] / 2 + GRID_DIM_X / 2,
+                 shifted_centroids[1] - scaled_radar_dim[1] / 2),
+                scaled_radar_dim[0], scaled_radar_dim[1], fill=True, color='pink', alpha=0.3,
+                zorder=100))
+
+
         # Use the same scaling for x,y-axis, configure bounds, display
         # plt.axis('square')
         # plt.xlim((-MAX_RADAR_RADIUS, MAX_RADAR_RADIUS))
         # plt.ylim((0, MAX_RADAR_RADIUS))
         # plt.scatter(radar_posn[:,1], radar_posn[:, 2], c='red', alpha = 0.8)
+        # Debug plot: Show a dot for the radar's position
+        plt.scatter(GRID_DIM_X/2, 0, color='blue')
         plt.show()
 
 
-def maximize_area_sum(scaled_centroid: NDArray, scaled_radar_dim: NDArray, matched_img: NDArray, shift_step: int = 2):
+def maximize_area_sum(scaled_centroid: NDArray, scaled_radar_dim: NDArray, matched_img: NDArray, step_size: int = 2):
     # Experimental: Shifts bounding box in the polar coordinate system to maximize the area sum
     angle, dist = to_polar(scaled_centroid)
+
+    # num_steps = 9 + max(0, math.ceil(dist - 3/GRID_RES) * 20)
+    num_steps = 10
+
+    if dist > 5/GRID_RES:
+        num_steps *= 4
+        step_size *= 2
     # Calculate area sum without shifting the bounding box
     prev_area_sum = radar_area_sum(scaled_centroid, scaled_radar_dim, matched_img)
     print("Original: %3f"%prev_area_sum)
     # Try to move the bounding box further/closer to the radar
-    # Change distance by 0.5 m increment
-    further_area_sum = radar_area_sum(to_cartesian(angle, dist + shift_step), scaled_radar_dim, matched_img)
-    closer_area_sum = radar_area_sum(to_cartesian(angle, dist - shift_step), scaled_radar_dim, matched_img)
+    # Change distance by 0.2 m increment
+    further_area_sum = radar_area_sum(to_cartesian(angle, dist + step_size), scaled_radar_dim, matched_img)
+    closer_area_sum = radar_area_sum(to_cartesian(angle, dist - step_size), scaled_radar_dim, matched_img)
 
     # Check if the area sum is already maximized (locally, along the same fixed radar angle)
     if further_area_sum / prev_area_sum < 1 and closer_area_sum / prev_area_sum < 1:
@@ -347,18 +353,19 @@ def maximize_area_sum(scaled_centroid: NDArray, scaled_radar_dim: NDArray, match
 
     # Decide whether to move further away/closer
     if further_area_sum < closer_area_sum:
-        shift_step *= -1
+        step_size *= -1
         prev_area_sum = closer_area_sum
         print("closer")
     else:
         prev_area_sum = further_area_sum
         print("further")
 
-    prev_centroid = to_cartesian(angle, dist + shift_step)
+    prev_centroid = to_cartesian(angle, dist + step_size)
+
 
     # Shifts until the area sum has peaked
-    for i in range(2, 9):
-        curr_centroid = to_cartesian(angle, dist + shift_step * i)
+    for i in range(2, num_steps):
+        curr_centroid = to_cartesian(angle, dist + step_size * i)
         curr_area_sum = radar_area_sum(curr_centroid, scaled_radar_dim, matched_img)
         if curr_area_sum < prev_area_sum:
             print("Shifted: %3f" % prev_area_sum)

@@ -287,7 +287,7 @@ def do_tracking(input_dir):
         detection_threshold=0.4,
         hit_counter_max=12,
         # initialization_delay=0,
-        initialization_delay=5,
+        initialization_delay=6,
         past_detections_length=6
     )
 
@@ -364,6 +364,6 @@ def runner(path: str):
 
 
 if __name__ == "__main__":
-    path = "D:\\UWCR Data2\\2019_04_09\\2019_04_09_pms1000\\images_0"
+    path = "D:\\UWCR Data\\2019_04_30\\2019_04_30_mlms001\\images_0"
     runner(path)
     print("Done")
