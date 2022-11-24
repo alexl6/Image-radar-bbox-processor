@@ -1,4 +1,4 @@
-name: norfair_tracking
+name: Img_radar_processor
 channels:
 - defaults
 dependencies:
