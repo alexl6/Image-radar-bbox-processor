@@ -142,11 +142,12 @@ def load_yolo(dir_path: str) -> List[NDArray]:
     return raw_bbox
 
 
-def filter_tracklets(tracklets):
+def filter_data(tracklets, results):
     """
     Filters a given list of tracklets & finalizes their object type
 
     :param tracklets: List of tracklets to be processed
+    :param results: List of results to be modified (made to the passed in list)
     :return: Processed tracklets
     """
     new_tracklets = {}
@@ -156,6 +157,26 @@ def filter_tracklets(tracklets):
             v.obj_type.clear()  # frees the memory associated with the map
             new_tracklets[k] = v
 
+            # if v.final_type == 7:
+            #     bad_det = False
+            #     for i in range(v.first_frame, v.first_frame + 5):
+            #         for bbox in results[i]:
+            #             print("")
+
+
+            f_num = v.latest_frame + 1
+            while f_num < len(results):
+                found = False
+                for i in range(len(results[f_num])):
+                    if results[f_num][i][-1] == v.uid:
+                        del results[f_num][i]
+                        found = True
+                        break
+
+                if not found:
+                    break
+                f_num += 1
+            # print("UID: %d, frames removed:%d-%d"%(v.uid, v.latest_frame+1, f_num))
     return new_tracklets
 
 
@@ -287,8 +308,8 @@ def do_tracking(input_dir):
         detection_threshold=0.4,
         hit_counter_max=12,
         # initialization_delay=0,
-        initialization_delay=6,
-        past_detections_length=6
+        initialization_delay=7,
+        past_detections_length=7
     )
 
     # Auxiliary tracklet object to keep track of additional info
@@ -327,7 +348,14 @@ def do_tracking(input_dir):
                 # Add detection for current frame
                 entry = add_bbox_res(tracked_obj.estimate, tracked_obj.label, tracked_obj.id)
                 # Update auxiliary tracklet data
-                tracklets[tracked_obj.id].update(tracked_obj.last_detection.data, norfair2yolo(tracked_obj.estimate))
+                if tracklets[tracked_obj.id].narrow_frames > 3:
+                    tracklets[tracked_obj.id].latest_frame -= max(tracked_obj.hit_counter_max - tracked_obj.hit_counter - 3, 0)
+                    # Disable this object by setting its hit counter to be negative
+                    tracked_obj.hit_counter = -1
+                else:
+                    tracklets[tracked_obj.id].update(tracked_obj.last_detection.data, norfair2yolo(tracked_obj.estimate), i)
+                # TODO: Add narrow box check & termination
+
                 tracked_bbox.append(entry)
 
         for obj in tracker.tracked_objects:
@@ -337,8 +365,8 @@ def do_tracking(input_dir):
             # Create & update auxiliary tracklet objects for initializing objects
             if obj.is_initializing_flag and obj.hit_counter_is_positive:
                 if obj.initializing_id not in init_tracklets.keys():
-                    init_tracklets[obj.initializing_id] = tracklet(obj.initializing_id)
-                init_tracklets[obj.initializing_id].update(obj.last_detection.data, norfair2yolo(obj.estimate))
+                    init_tracklets[obj.initializing_id] = tracklet(obj.initializing_id, i)
+                init_tracklets[obj.initializing_id].update(obj.last_detection.data, norfair2yolo(obj.estimate), i)
                 init_tracklets[obj.initializing_id].add_estimate(
                     add_bbox_res(obj.estimate, obj.label, obj.initializing_id))
 
@@ -359,7 +387,7 @@ def do_tracking(input_dir):
 
 def runner(path: str):
     res, tracklets_res = do_tracking(os.path.join(path))
-    tracklets_res = filter_tracklets(tracklets_res)
+    tracklets_res = filter_data(tracklets_res, res)
     output_yolo(res, tracklets_res, path, 0, len(res))
 
 

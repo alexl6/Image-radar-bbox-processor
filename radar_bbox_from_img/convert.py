@@ -71,7 +71,7 @@ if __name__ == '__main__':
     range_grid, angle_grid = calc_conversion_grid()
     new_data = []
 
-    with open('person.csv', 'r') as f:
+    with open('polar_radar.csv', 'r') as f:
         raw_data = np.genfromtxt(f, dtype= int, delimiter=',')
     
     with open('output.csv', 'w') as f:

@@ -16,7 +16,7 @@ class tracklet:
             return True
         return False
 
-    def __init__(self, uid: int):
+    def __init__(self, uid: int, f_num: int):
         """
         Initializes an auxiliary tracklet object with a given uid
 
@@ -28,6 +28,9 @@ class tracklet:
         self.obj_type: Dict[str, int] = {}
         self.estimates = []
         self.final_type: str = ''
+        self.latest_frame = -1
+        self.first_frame = f_num
+        self.narrow_frames = 0
 
     def finalize_obj_type(self) -> None:
         max_count: int = -1
@@ -36,14 +39,25 @@ class tracklet:
                 self.final_type = obj_name
                 max_count = count
 
-    def update(self, obj_type: str, bbox: typing.NDArray) -> None:
+    def update(self, obj_type: str, bbox: typing.NDArray, frame_num: int) -> None:
         if not tracklet.is_small(bbox):
             self.background = False
             weight = 2
         else:
             weight = 1
-
         self.obj_type[obj_type] = self.obj_type.get(obj_type, 0) + weight
+        # TODO: Experimental
+        self.latest_frame = frame_num
+
+        if bbox[2] == 0:
+            self.narrow_frames += 5
+        elif bbox[3]/bbox[2] > 5 or (bbox[3]/bbox[2] > 3 and obj_type in {2, 5, 7}):
+            if self.uid == 2:
+                print(frame_num)
+                print( obj_type in {2, 5, 7})
+            self.narrow_frames += 1
+        else:
+            self.narrow_frames = 0
 
     def add_estimate(self, entry:list):
         self.estimates.append(entry)
