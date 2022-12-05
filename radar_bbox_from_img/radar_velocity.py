@@ -14,7 +14,8 @@ V_FRAME_DIFF_MIN: int = 5
 
 def find_uid_idx(uid: int, uid_map: Dict) -> int:
     """
-    Looksup a particular uid in a given uid_map
+    Lookup a particular uid in a given uid_map
+
     :param uid: an integer uid
     :param uid_map: a map that maps uid's to their corresponding index in that frame
     :return: the index of the bounding box with the caller supplied uid, -1 if it's not found
@@ -25,12 +26,12 @@ def find_uid_idx(uid: int, uid_map: Dict) -> int:
     return -1
 
 
-def calc_velocity(frame0:NDArray, bbox0:int, frame1:NDArray, bbox1:int, output:NDArray, f_diff: int):
+def calc_velocity(frame0: NDArray, bbox0: int, frame1: NDArray, bbox1: int, output: NDArray, f_diff: int):
      diff = (frame1[bbox1, 1:3] - frame0[bbox0, 1:3]) / f_diff * 5
      output[bbox0, 0:2] = diff
 
 
-def generate_idx_range(lower:int, upper:int, length:int):
+def generate_idx_range(lower: int, upper: int, length: int):
     if lower > length - 1:
         return []
 

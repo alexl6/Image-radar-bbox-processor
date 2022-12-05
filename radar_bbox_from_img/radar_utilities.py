@@ -1,10 +1,12 @@
-import csv, os, re, glob
+import csv
+import glob
+import os
+import re
+from typing import List, Dict
 
 import numpy as np
 import scipy.io
-
 from numpy.typing import NDArray
-from typing import List, Dict
 
 
 def load_yolo(dir_path: str, scale:NDArray = np.array([1, 1440, 1080, 1440, 1080, 1]))-> (List[NDArray], List[Dict]):
@@ -79,12 +81,16 @@ def load_mat(path: str, var_name: str = 'HRadar0') -> NDArray:
     """
     return scipy.io.loadmat(path)[var_name]
 
+
 def polar_in_cartesian(range_grid, angle_grid, dim=(128, 128)):
     """
     Calculates the cartesian position of every point in a polar grid of dim(ension). Default dimension is (128 x 128)
 
+    :param range_grid:
+    :param angle_grid:
     :param dim: Dimensions of the grid
-    :return:
+    :return: A tuple of two NDArrays representing possible x and y coordinate values. Permutations of pairs of these
+    values gives all possible points in the system.
     """
     x_posn = np.empty(dim)
     y_posn = np.empty(dim)
@@ -135,9 +141,11 @@ def swap(container: NDArray, idx0: int = 0, idx1: int = 1) -> None:
     :param idx0: Index to the first element
     :param idx1: Index to the second element
     """
-    temp = container[idx0]
-    container[idx0] = container[idx1]
-    container[idx1] = temp
+    container[idx0], container[idx1] = container[idx1], container[idx0]
+    # TODO: Validate the code above is equivalent to the code below
+    # temp = container[idx0]
+    # container[idx0] = container[idx1]
+    # container[idx1] = temp
 
 
 def dim_ratio(bbox: NDArray) -> float:

@@ -1,0 +1,1 @@
+{"region":{"type":{"type":"radio","description":"","options":{"0":"Person","1":"Bicycle","2":"Car","3":"Motorbike","5":"Bus","7":"Truck","80":"Cyclist"},"default_options":{}},"uid":{"type":"text","description":"","default_value":""}},"file":{}}

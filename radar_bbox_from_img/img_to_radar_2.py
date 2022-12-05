@@ -57,7 +57,6 @@ def get_radar_intensity(f_num: int, seq_path: str):
     return b.flatten()
 
 
-
 def fnum_prompt(length: int):
     """
     Prompt the user for a frame number or exit gracefully if the user types EOF
@@ -564,12 +563,10 @@ def matched_filter_batch(img_bboxes: List[NDArray], seq_path:str, label_path:str
 
     cached_shift_amt = {}
 
-
     img_label_path = path_generator(seq_path, ['vis_labels'])
     text_label_path = path_generator(seq_path, ['vis_labels', 'text_label'])
 
     # Enable interactive mode
-    plt.ion()
     for f_num in range(len(img_bboxes)):
         file = open(os.path.join(text_label_path, str(f_num).zfill(10) + '.csv'), mode='w', newline='')
         writer = csv.writer(file)
@@ -585,7 +582,7 @@ def matched_filter_batch(img_bboxes: List[NDArray], seq_path:str, label_path:str
         z = get_radar_intensity(f_num, seq_path)
         image = scale_to_grid(scaled_x, scaled_y, z).T
 
-        if False:
+        if True:
             plt.ylim((0, GRID_DIM_Y))
             plt.imshow(image)
 
@@ -624,25 +621,32 @@ def matched_filter_batch(img_bboxes: List[NDArray], seq_path:str, label_path:str
             # Shifts bounding box in the polar coordinate system to maximize the area sum
             shifted_centroids, cached_shift_amt[uid] = maximize_area_sum(scaled_centroid, scaled_radar_dim, matched_img, shift_amt)
 
-            if False:
+            if True:
+                plt.gca().set_axis_off()
+                plt.subplots_adjust(top=1, bottom=0, right=1, left=0,
+                                    hspace=0, wspace=0)
+                plt.margins(0, 0)
                 plt.gca().add_patch(patches.Rectangle(
                     (shifted_centroids[0] - scaled_radar_dim[0] / 2 + GRID_DIM_X / 2,
                      shifted_centroids[1] - scaled_radar_dim[1] / 2),
                     scaled_radar_dim[0], scaled_radar_dim[1], fill=True, color='pink', alpha=0.3,
                     zorder=100))
 
-            restored_centroid = np.round(shifted_centroids * GRID_RES, 5)
+
+            restored_centroid = np.round(shifted_centroids * GRID_RES, 8)
             line = [uid, int(img_bboxes[f_num][bbox_idx, 0])]
             line += list(restored_centroid) + list(radar_bbox_dim)
             writer.writerow(line)
         file.close()
 
-        if False:
+        if True:
             plt.scatter(GRID_DIM_X/2, 0, color='blue')
             plt.savefig(os.path.join(img_label_path, str(f_num).zfill(10) + '.png'), format='png')
 
 def path_generator(root: str, sub: List[str])->str:
-    p = os.path.join([root] + sub)
+    p = root
+    for s in sub:
+        p = os.path.join(p, s)
     if not os.path.exists(p):
         os.makedirs(p)
     return p
@@ -653,7 +657,7 @@ if __name__ == '__main__':
     seq_name = input("Seq name?\t")
 
     if seq_name == '':
-        seq_name = "2019_04_30_mlms001"
+        seq_name = "2019_04_09_cms1000"
 
     date_pattern = re.compile("\d{4}_\d{2}_\d{2}")
     date = date_pattern.search(seq_name).group()
@@ -687,8 +691,8 @@ if __name__ == '__main__':
 
 
     # raw_bbox_interactive(img_bboxes, seq_path, centroids, centroids_v, x, y)
-    matched_filter_interactive(img_bboxes, seq_path, centroids, centroids_v, x, y, uid_mapping)
-    # matched_filter(img_bboxes, seq_path, vis_label_path, centroids, centroids_v, x, y, uid_mapping)
+    # matched_filter_interactive(img_bboxes, seq_path, centroids, centroids_v, x, y, uid_mapping)
+    matched_filter_batch(img_bboxes, seq_path, vis_label_path, centroids, centroids_v, x, y, uid_mapping)
 
     # batch_process_to_img(img_bboxes, seq_path, centroids, centroids_v, radar_label_path, x, y)
     # plt.ion()
